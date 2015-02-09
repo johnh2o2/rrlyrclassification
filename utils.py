@@ -5,8 +5,10 @@ from math import *
 import defaults
 from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
+from scipy.stats import zscore as ZSCORE
 from fastperiod import specwindow, lombscargle
-import lsp, sys, os, re
+import sys, os, re
+import fastlombscargle as lsp
 from os.path import exists
 import readhatlc as rhlc
 
@@ -38,6 +40,9 @@ variable_star_classes = {
            'DS', 'DW', 'K', 'KE', 'KW', 'SD'],
     'RR Lyrae' : [ 'RRAB', 'RRC', 'R', 'RR', 'RR(B)' ]
 }
+feat_dir = "/Users/jah5/Documents/Fall2014_Gaspar/features"
+hat_features_fname = lambda hatid : "/Users/jah5/Documents/Fall2014_Gaspar/features/%s-features-v3.pkl"%(hatid)
+
 COL_TYPE = 'TF'
 COL_SELECTION = 'locally-brightest'
 
@@ -53,9 +58,9 @@ delta_P    = .01
 DPHASE     = 1.0
 NSEARCH    = 1
 
-ofac       = 4
-hifac      = 4
-MACC       = 4
+ofac       = 3
+hifac      = 2
+MACC       = 3
 NBINS      = 50
 eps        = 10E-7
 max_per    = 10.
@@ -257,31 +262,26 @@ def is_peak(powers, i, imin, imax, per, peak_pers):
     for I in range(imin,imax+1):
         if I == i: continue
         if powers[I] > p: return False
-    for pper in peak_pers:
-        if abs(per - pper)/pper < 0.05: return False
+    #for pper in peak_pers:
+    #    if abs(per - pper)/pper < 0.01: return False
     return True
-def find_n_peaks(periods, powers, n_peaks, dn=defaults.settings['peaks-dn']):
-    peak_periods = []
-    peak_powers = []
-    ls0 = np.zeros(len(periods), dtype=np.dtype([('periods', np.float_), ('powers', np.float_)]))
-    ls = np.zeros(len(periods), dtype=np.dtype([('periods', np.float_), ('powers', np.float_), ('indices', np.int_)]))
-    for i in range(0,len(periods)):
-        ls['periods'][i] = periods[i] 
-        ls['powers'][i] = powers[i]
-        ls['indices'][i] = i
-        ls0['periods'][i] = periods[i]
-        ls0['powers'][i]  = powers[i]
 
-    ls = np.sort(ls, order='powers')[::-1]
-    for L in ls:
+
+def find_n_peaks(periods, powers, n_peaks, dn=defaults.settings['peaks-dn']):
+    peak_periods, peak_powers = [], []
+    inds = np.argsort(powers)[::-1]
+    J=0
+    n = len(periods)
+    while J < len(inds):
         if len(peak_periods) == n_peaks: break
-        I = L['indices']
+        I = inds[J]
         imin = max([ I - dn, 0 ] )
-        imax = min([ I + dn, len(ls) - 1])
-        if is_peak(ls0['powers'], I, imin, imax, L['periods'], peak_periods): 
-            peak_periods.append(L['periods'])
-            peak_powers.append(L['powers'])
-    
+        imax = min([ I + dn, n - 1])
+        if is_peak(powers, I, imin, imax, periods[I], peak_periods): 
+            peak_periods.append(periods[I])
+            peak_powers.append(powers[I])
+            J+= (imax - J)
+        else: J+=1
     return np.array(peak_periods), np.array(peak_powers)
 def detrend(lc, detrend_vars=[ 'FLT', 'FLD', 'STF', 'NET', 'CAM', 'TEL' ], magtypes = [ 'EP', 'TF' ]):
 	for magtype in magtypes:

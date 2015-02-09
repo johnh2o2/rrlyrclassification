@@ -33,9 +33,9 @@ nfolds = 20
 #			'CST', 'DCEP', 'BE', 'IB', 'EA/DM', 'none']
 #vartypes_to_classify = [ 'RRAB', 'none', 'RRC', 'EA', 'EW', 'EB' ]
 #vartypes_to_classify = [ 'Pulsating', 'Eclipsing binary', 'none' ]
-vartypes_to_classify = [ 'RR Lyrae','none' ]
-skip_vartypes = [ '*' ]# , 'R' , 'RR', 'R(B)']
-classify_categories = True
+vartypes_to_classify = [ 'RRAB','none' ]
+skip_vartypes = [ '*' , 'R' , 'RR', 'R(B)']
+classify_categories = False
 #show_confusion_matrix= False
 #default_clfr = lambda : SVC(probability=True, kernel='rbf')
 default_clfr = QDA
@@ -115,15 +115,15 @@ def AddCustomFeature(features):
 	new_features = {}
 	for f in features:
 		new_features[f] = features[f]
-	for p in range(1,3):
-		for h in range(1, 7):
+	for p in range(1,npers+1):
+		for h in range(1, nharmonics+1):
 			new_features['p%d R%d/R1'%(p, h)] = features['p%dh%d_amplitude'%(p, h)]/features['p%dh1_amplitude'%(p)]
 			#new_features['normed_p%dh%d_phase'%(p, h)] = features['p%dh%d_phase'%(p, h)] = features['p1h1_phase']
-	for p in range(1, 6):
+	#for p in range(1, 6):
 		#new_features['raw_lsp_peak%d_power'%(p)]/=features['raw_lsp_peak1_power']
-		new_features['resid_lsp_peak%d_power'%(p)]/=features['resid_lsp_peak1_power']
-		new_features['p1_lsp_peak%d_power'%(p)]/=features['p1_lsp_peak1_power']
-		new_features['p2_lsp_peak%d_power'%(p)]/=features['p2_lsp_peak1_power']
+		#new_features['resid_lsp_peak%d_power'%(p)]/=features['resid_lsp_peak1_power']
+		#new_features['p1_lsp_peak%d_power'%(p)]/=features['p1_lsp_peak1_power']
+		#new_features['p2_lsp_peak%d_power'%(p)]/=features['p2_lsp_peak1_power']
 	return new_features
 def AddCustomFeatures(features):
 	new_features = {}
@@ -198,7 +198,6 @@ def GetGoodHATIDs(IDs, categs ):
 			#and feats[ID]['V'] < 11.5
 				good_ids.append(ID)
 	return good_ids
-hat_features_fname = lambda hatid : "/Users/jah5/Documents/Fall2014_Gaspar/work/saved_features/%s-features-v2.pkl"%(hatid)
 
 def SelectVmagRange(features, Vmin = None, Vmax = None):
 	new_features = {}
@@ -409,7 +408,7 @@ for ID in hatids:
 
 pickle.dump(mean_mags, open("mean_mags.dict", 'wb'))
 '''
-mean_mags = pickle.load(open("mean_mags.dict", 'rb'))
+#mean_mags = pickle.load(open("mean_mags.dict", 'rb'))
 
 
 inds = [ i for i in range(len(gcvs_crossmatches)) if gcvs_crossmatches[i]['id'] in hatids ]
@@ -423,12 +422,12 @@ for vclass in vartypes_to_classify:
 print "Getting features..."
 Full_Features 						= LoadAllFeatures(hatids)
 #PlotMagnitudeDist(Full_Features)
-obs_mag = {}
-for ID in mean_mags:
-	obs_mag[ID] = { 'V' : mean_mags[ID] }
-PlotMagnitudeDist(obs_mag)
-PlotMagnitudeDist(Full_Features)
-plt.show()
+#obs_mag = {}
+#for ID in mean_mags:
+#	obs_mag[ID] = { 'V' : mean_mags[ID] }
+#PlotMagnitudeDist(obs_mag)
+#PlotMagnitudeDist(Full_Features)
+#plt.show()
 '''
 Vmins, Vmaxes, Vavgs = VmagSplit(Full_Features,nbins=2)
 
@@ -576,7 +575,7 @@ ax_b = f.add_subplot(133)
 
 AddROCtoAxis(ax_m, tprs_mag, fprs_mag)
 AddROCtoAxis(ax_o, tprs_other, fprs_other, tpr_range=[0.9, 1.])
-AddROCtoAxis(ax_b, tprs_comp, fprs_comp, color='b', tpr_range=[0.9, 1])
+AddROCtoAxis(ax_b, tprs_comp, fprs_comp, color='b', tpr_range=[0.95, 1], fpr_range=[0.0, 0.4])
 ax_m.set_title("Magnitude data")
 ax_o.set_title("Other data")
 

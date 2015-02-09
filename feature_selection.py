@@ -2,8 +2,10 @@ import numpy as np
 from multiprocessing import Pool
 from scipy.optimize import curve_fit
 from scipy.stats import skew, kurtosis
-from fastperiod import specwindow, lombscargle, dworetsky, stetson
-import lsp, sys, os, re
+from fastperiod import specwindow, lombscargle, dworetsky, stetson, dworetsky_single_per, stetson_single_per
+import sys, os, re
+#from fastlombscargle import fasper
+from lsp import fasper
 from os.path import exists
 import matplotlib.pyplot as plt
 from math import *
@@ -12,11 +14,12 @@ from time import time
 import readhatlc as rhlc
 import cPickle as pickle
 VERBOSE=False
-feat_dir = "/Users/jah5/Documents/Fall2014_Gaspar/work/saved_features"
+
 small = eps
 FORCE_REDO = True
 FORCE_IDLIST_REDO = False
 NPROC=4
+
 min_nobs = 20
 # features: 
 # ===========
@@ -78,7 +81,6 @@ def BinnedDistro(x, nbins=20, zrange=(-5, 5)):
 		bin = float(z - zmin)/dz
 		if bin < 0: bin = 0
 		if bin > nbins - 1: bin = nbins-1
-
 		distro[bin] += 1.
 	return edges, distro/sum(distro)
 def ScaledMoment(x, N):
@@ -87,75 +89,8 @@ def ScaledMoment(x, N):
 	return np.mean(np.power(Z, N))/(sig**N)
 def FeatureVectorFileName(hatid):
 	return "%s/%s-features-v3.pkl"%(feat_dir, hatid)
-def Stetson(t, x, p, err=None):
-	n_obs = len(x)
-	j_range = n_obs-1
-
-	fold_t = np.min(t) # fold at the first time element
-
-	phase = (t - fold_t)/p - np.floor((t - fold_t)/p)
-	phase_sort_ind = np.argsort(phase)
-
-	phase_sorted = phase[phase_sort_ind]
-	x_sorted = x[phase_sort_ind]
-	if err is None:
-		err = get_errs(x_sorted)
-	
-	err_sorted = err[phase_sort_ind]
-
-	strlen_numer = 0.0
-	strlen_denom = 0.0
-
-	# build up the string                 
-	for j in range(j_range):
-	    
-	    weights = ( ( (err_sorted[j])*(err_sorted[j]) + 
-	                  (err_sorted[j+1])*(err_sorted[j+1]) ) *
-	                (phase_sorted[j+1] - phase_sorted[j] + 1.0/n_obs) )
-	    weights = 1.0/weights
-
-	    strlen_numer += weights*np.fabs(x_sorted[j] - x_sorted[j+1])
-	    strlen_denom += weights
-
-	# add the last element
-	weights = ( ( (err_sorted[-1])*(err_sorted[-1]) + 
-	              (err_sorted[0])*(err_sorted[0]) ) *
-	            (phase_sorted[0] - phase_sorted[-1] + 1.0/n_obs) )
-	weights = 1.0/weights
-
-	strlen_numer += weights*np.fabs(x_sorted[-1] - x_sorted[0])
-	strlen_denom += weights
-
-	strlen = strlen_numer/strlen_denom
-
-	return strlen
-def Dworetsky(t, x, p):
-	j_range = len(x)-1
-	fold_t = np.min(t) # fold at the first time element
-
-	mod_x = (x - np.min(x))/(2.0*(np.max(x) - np.min(x))) - 0.25
-
-	phase = (t - fold_t)/p - np.floor((t - fold_t)/p)
-
-	phase_sort_ind = np.argsort(phase)
-	phase_sorted = phase[phase_sort_ind]
-	mod_x_sorted = mod_x[phase_sort_ind]
-
-	strlen = 0.0
-
-	# now calculate the string length
-	for j in range(j_range):
-	    strlen += np.sqrt( (mod_x_sorted[j+1] - mod_x_sorted[j]) * 
-	                       (mod_x_sorted[j+1] - mod_x_sorted[j]) +
-	                       (phase_sorted[j+1] - phase_sorted[j]) * 
-	                       (phase_sorted[j+1] - phase_sorted[j]))
-
-	strlen += np.sqrt( (mod_x_sorted[0] - mod_x_sorted[-1]) * 
-	                   (mod_x_sorted[0] - mod_x_sorted[-1]) +
-	                   (phase_sorted[0] - phase_sorted[-1] + 1) *
-	                   (phase_sorted[0] - phase_sorted[-1] + 1))
-
-	return strlen   
+Stetson = lambda t, x, p, err : stetson_single_per(t, x, p, err)
+Dworetsky = lambda t, x, p : dworetsky_single_per(t, x, p)
 def BinWidths(X):
 	dX_lefts = {}
 	dX_rights = {}
@@ -168,7 +103,7 @@ def BinWidths(X):
 		dX_rights[X[i]] = X[i+1] - X[i]
 	return dX_lefts, dX_rights
 def LombScargle(t, x ):
-	wk1,wk2,nout,jmax,prob = lsp.fasper(t, x, ofac, hifac, MACC)
+	wk1,wk2,nout,jmax,prob = fasper(t, x, ofac, hifac, MACC)
 	P = np.power(wk1[::-1],-1)
 	LSP = wk2[::-1]
 	return P, LSP
@@ -215,22 +150,29 @@ def GetAmplitude(*args):
 	return 0.5*(max(X) - min(X))
 def Whiten(t, x, ws, amps, phs, c):
 	return t, get_resid( t, x, ws, amps, phs, c )
-def FitPeriods( t, x, verbose=VERBOSE ):
+def FitPeriods( t, x, periods=None, verbose=VERBOSE ):
 	resid = np.zeros(len(x))
 	resid[:] = x[:]
 	std_total = np.std(x)
 	PERIODS, chi2s, stds = [], [], []
+	i=0
 	while len(PERIODS) < npers:
 		# start timer
 		if verbose: t0 = time()
 		# Get subset of periods to search
-		search_pers = GetSearchPeriods(t, resid, PERIODS)
-		if verbose: print "     seaching..."
-		# Find the period that minimizes the scatter in the residual
-		best_pers, sig_pers = find_best_of_n_periods(t,resid,search_pers,other_periods=PERIODS)
-		# End timer.
-		if verbose: dt = time() - t0
-		if verbose: print "     done (%f s)"%(dt)
+		if not periods is None: 
+			best_pers = [ periods[i] ]
+
+		else: 
+			if verbose: print "     seaching..."
+			# Find the period that minimizes the scatter in the residual
+		
+			search_pers = GetSearchPeriods(t, resid, PERIODS)
+			best_pers, sig_pers = find_best_of_n_periods(t,resid,search_pers,other_periods=PERIODS)
+		
+			# End timer.
+			if verbose: dt = time() - t0
+			if verbose: print "     done (%f s)"%(dt)
 		
 		PERIODS.append(best_pers[0])
 
@@ -240,7 +182,7 @@ def FitPeriods( t, x, verbose=VERBOSE ):
 		# Analyze the residual
 		chi2s.append(get_chi2_pf(t,resid,PERIODS[-1]))
 
-		std_old = np.std(resid)	
+		if verbose: std_old = np.std(resid)	
 		resid[:] = get_resid(t, x, *fit_params)[:]
 		std_new = np.std(resid)
 		stds.append(std_new)
@@ -256,7 +198,7 @@ def FitPeriods( t, x, verbose=VERBOSE ):
 			chi2_new = get_chi2_pf(t,resid,Pbest)
 			print "   PERIOD %d = %.5fd   chi2: %.3e --> %.3e [-dchi2 = %.3e]"%( len(PERIODS),  PERIODS[-1], chi2s[-1], chi2_new, chi2s[-1] - chi2_new)
 			print "                         std : %.3e --> %.3e [-dstd  = %.3e] = %.3f%% (%.3f%% of total rms)"%(std_old, std_new, std_old - std_new, 100*(std_old - std_new)/std_old, 100*(std_old - std_new)/std_total)
-
+		i+=1
 	ws, amps, phs, c = fit_params
 	return ws, amps, phs, c, chi2s, stds
 	#plot_fit(times,mags,ws,amps,phs,c,show=True)
@@ -270,7 +212,9 @@ def SplitFitParams( ws, amps, phs, c ):
 
 	return WS, AMPS, PHS, C
 def GetLombScargleFeatures(t, x, prefix='', npeaks = NPEAKS_TO_SAVE, add_stetson=True, add_dworetsky=True):
+	#t0 = time()
 	p, lsp = LombScargle(t, x)
+	#print "      lsp : %.4f"%(time() - t0)
 	# Find peaks
 	ppers, ppows = find_n_peaks(p, lsp, npeaks)
 	inds = np.argsort(ppows)[::-1]
@@ -279,12 +223,17 @@ def GetLombScargleFeatures(t, x, prefix='', npeaks = NPEAKS_TO_SAVE, add_stetson
 	features = {}
 	# Save the (period, power) pairs for the top few peaks
 	for j in range(npeaks):
-		P = ppers_sorted[j]
-		features['%slsp_peak%d_power'%(prefix, j+1)] = ppows_sorted[j]
-		features['%slsp_peak%d_period'%(prefix, j+1)] = ppers_sorted[j]
+		if j < len(ppers_sorted):
+			PER = ppers_sorted[j]
+			POW = ppows_sorted[j]
+		else:
+			PER, POW = 0.,0.
+		
+		features['%slsp_peak%d_power'%(prefix, j+1)] = POW
+		features['%slsp_peak%d_period'%(prefix, j+1)] = PER
 
-		if add_stetson: features['%slsp_peak%d_stetson_strlen'%(prefix, j+1)] = Stetson(t, x, P)
-		if add_dworetsky: features['%slsp_peak%d_dworetsky_strlen'%(prefix, j+1)] = Dworetsky(t, x, P)
+		#if add_stetson: features['%slsp_peak%d_stetson_strlen'%(prefix, j+1)] = Stetson(t, x, PER, get_errs(x))
+		#if add_dworetsky: features['%slsp_peak%d_dworetsky_strlen'%(prefix, j+1)] = Dworetsky(t, x, PER)
 	return features
 def MergeDicts(d1, d2):
 	d3 = {}
@@ -297,12 +246,17 @@ def GetPeriodicFeatures(t, x):
 	features = {}
 
 	# Save Lomb-Scargle results for raw lightcurve
+	#print "  lomb-scargle features..."
+	#t0 = time()
 	lsp_raw_features = GetLombScargleFeatures(t, x, prefix='raw_')
+	#print "     done (%.3f s)"%(time() - t0)
 	features = MergeDicts(lsp_raw_features, features)
 
 	# Fit (multi-)periodic model to data
-	ws, amps, phs, c, chi2s, stds = FitPeriods(t, x)
-	
+	#print "  fit features..."
+	#t0 = time()
+	ws, amps, phs, c, chi2s, stds = FitPeriods(t, x, periods = [ lsp_raw_features['raw_lsp_peak1_period'] ])
+	#print "     done (%.3f s)"%(time() - t0)
 	std = np.std(x)
 	# Reorganize arrays Arr = [ [ arr_p1h1, arr_p1h2, ... ], [ arr_p2h1, ... ] ]
 	WS, AMPS, PHS, C = SplitFitParams(ws, amps, phs, c)
@@ -388,7 +342,7 @@ def GetVariabilityFeatures(t, x ):
 	for i in range(len(distro)):
 		var_feats['binned_distro_z%.2f_%.2f'%(edges[i], edges[i+1])] = distro[i]
 	return var_feats
-def get_features(lc, nfreqs = npers, nharmonics=nharmonics, loud=True):
+def get_features(lc, nfreqs = npers, nharmonics=nharmonics, loud=False):
 	Features = {}
 	if loud: print "detrending..."
 	if loud: t0 = time()
@@ -438,12 +392,13 @@ def get_features(lc, nfreqs = npers, nharmonics=nharmonics, loud=True):
 	return Features
 
 if __name__ == '__main__':
+
 	def process(ID):
 		feat_fname = FeatureVectorFileName(ID)
 		if os.path.exists(feat_fname) and not FORCE_REDO:
 			return
 
-		print "PID: %s; started"%(str(os.getpid()))
+		#print "PID: %s; started"%(str(os.getpid()))
 		lc = rhlc.read_hatlc(hat_fname(ID))
 		if lc is None:
 			return
@@ -453,7 +408,7 @@ if __name__ == '__main__':
 		print "PID: %s; %s DONE (total time: %.3f s)"%(str(os.getpid()), ID, dt)
 		
 		pickle.dump(feat, open(feat_fname, 'wb'))
-	p = Pool(NPROC)
+	
 	ids_fname = "ids_to_use.list"
 	if os.path.exists(ids_fname) and not FORCE_IDLIST_REDO:
 		ids_to_use = pickle.load(open(ids_fname, 'rb'))
@@ -465,5 +420,9 @@ if __name__ == '__main__':
 	print len(ids_to_use)," out of ", len(gcvs_m), " ID's available."
 	#print "Fetching %d ids"%(len(ids_to_fetch))
 	#fetch_lcs(ids_to_fetch)
-	p.map(process, ids_to_use)
+	if NPROC > 1:
+		p = Pool(NPROC)
+		p.map(process, ids_to_use)
+	else:
+		for ID in ids_to_use: process(ID)
 	

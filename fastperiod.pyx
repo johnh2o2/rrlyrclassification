@@ -14,6 +14,93 @@ import numpy as np
 cimport numpy as np
 from numpy import pi
 
+def stetson_single_per(  np.ndarray[np.float64_t, ndim=1] t,
+                         np.ndarray[np.float64_t, ndim=1] x, 
+                         np.float64_t p, 
+                         np.ndarray[np.float64_t, ndim=1] err):
+
+    cdef:
+        np.int64_t                          n_obs, j_range, j
+        np.float64_t                        fold_t, strlen_numer, strlen_denom, strlen, weights
+        np.ndarray[np.float64_t, ndim=1]    phase, phase_sorted, x_sorted, err_sorted
+        np.ndarray[np.int64_t, ndim=1]      phase_sort_ind
+    n_obs = len(x)
+    j_range = n_obs-1
+
+    fold_t = np.min(t) # fold at the first time element
+
+    phase = (t - fold_t)/p - np.floor((t - fold_t)/p)
+    phase_sort_ind = np.argsort(phase)
+
+    phase_sorted = phase[phase_sort_ind]
+    x_sorted = x[phase_sort_ind]
+    
+    
+    err_sorted = err[phase_sort_ind]
+
+    strlen_numer = 0.0
+    strlen_denom = 0.0
+
+    # build up the string                 
+    for j in range(j_range):
+        
+        weights = ( ( (err_sorted[j])*(err_sorted[j]) + 
+                      (err_sorted[j+1])*(err_sorted[j+1]) ) *
+                    (phase_sorted[j+1] - phase_sorted[j] + 1.0/n_obs) )
+        weights = 1.0/weights
+
+        strlen_numer += weights*np.fabs(x_sorted[j] - x_sorted[j+1])
+        strlen_denom += weights
+
+    # add the last element
+    weights = ( ( (err_sorted[-1])*(err_sorted[-1]) + 
+                  (err_sorted[0])*(err_sorted[0]) ) *
+                (phase_sorted[0] - phase_sorted[-1] + 1.0/n_obs) )
+    weights = 1.0/weights
+
+    strlen_numer += weights*np.fabs(x_sorted[-1] - x_sorted[0])
+    strlen_denom += weights
+
+    strlen = strlen_numer/strlen_denom
+
+    return strlen
+
+def dworetsky_single_per(np.ndarray[np.float64_t, ndim=1] t,
+                         np.ndarray[np.float64_t, ndim=1] x, 
+                         np.float64_t p):
+    cdef:
+        np.int64_t                          n_obs, j_range, j
+        np.float64_t                        fold_t, strlen_numer, strlen_denom, strlen, weights
+        np.ndarray[np.float64_t, ndim=1]    phase, mod_x, mod_x_sorted, phase_sorted
+        np.ndarray[np.int64_t, ndim=1]      phase_sort_ind
+
+    j_range = len(x)-1
+    fold_t = np.min(t) # fold at the first time element
+
+    mod_x = (x - np.min(x))/(2.0*(np.max(x) - np.min(x))) - 0.25
+
+    phase = (t - fold_t)/p - np.floor((t - fold_t)/p)
+
+    phase_sort_ind = np.argsort(phase)
+    phase_sorted = phase[phase_sort_ind]
+    mod_x_sorted = mod_x[phase_sort_ind]
+
+    strlen = 0.0
+
+    # now calculate the string length
+    for j in range(j_range):
+        strlen += np.sqrt( (mod_x_sorted[j+1] - mod_x_sorted[j]) * 
+                           (mod_x_sorted[j+1] - mod_x_sorted[j]) +
+                           (phase_sorted[j+1] - phase_sorted[j]) * 
+                           (phase_sorted[j+1] - phase_sorted[j]))
+
+    strlen += np.sqrt( (mod_x_sorted[0] - mod_x_sorted[-1]) * 
+                       (mod_x_sorted[0] - mod_x_sorted[-1]) +
+                       (phase_sorted[0] - phase_sorted[-1] + 1) *
+                       (phase_sorted[0] - phase_sorted[-1] + 1))
+
+    return strlen   
+
 def dworetsky(np.ndarray[np.float64_t,ndim=1] time,
               np.ndarray[np.float64_t,ndim=1] mag,
               np.ndarray[np.float64_t,ndim=1] err,
