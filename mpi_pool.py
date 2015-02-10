@@ -26,7 +26,7 @@ from contextlib import contextmanager
 import mpi4py.MPI as mpi
 
 #from lsst.pipe.base import Struct
-import Struct
+from LSST_Struct import Struct
 
 __all__ = ["Comm", "Pool", "startPool", "abortOnError", "NODE", ]
 
@@ -496,12 +496,13 @@ class PoolMaster(PoolNode):
         """
         tags = Tags("result", "work")
         num = len(dataList)
+        
         if self.size == 1 or num <= 1:
             return self._processQueue(context, func, zip(range(num), dataList), *args, **kwargs)
         if self.size == num:
             # We're shooting ourselves in the foot using dynamic distribution
             return self.mapNoBalance(context, func, dataList, *args, **kwargs)
-
+        
         self.command("map")
 
         # Send function
@@ -515,8 +516,8 @@ class PoolMaster(PoolNode):
                    i in range(self.size)]
         pending = min(num, self.size - 1)
         self.log("scatter initial jobs")
+        
         self.comm.scatter(initial, root=self.rank)
-
         while queue or pending > 0:
             status = mpi.Status()
             index, result = self.comm.recv(status=status, tag=tags.result, source=mpi.ANY_SOURCE)
