@@ -19,58 +19,9 @@ small = eps
 FORCE_REDO = True
 FORCE_IDLIST_REDO = False
 NPROC=4
-
 min_nobs = 20
-# features: 
-# ===========
-#  	rms
-#   chi2
-#	kurtosis
-#	skew
-#	frac_beyond1std
-#	frac_beyond2std
-#	frac_beyond3std
-#	max_lsp_power_all		 -- this should not be used in classification
-#	best_ls_per_all
-#
-#	rms_resid
-#	chi2_resid
-#	kurtosis_resid
-#	skew_resid
-#	frac_beyond1std_resid
-#	frac_beyond2std_resid
-#	frac_beyond3std_resid
-#	max_lsp_power_resid		 -- this should not be used in classification
-#	best_ls_per_resid
-#
-#   COLORS: V,(R-V,I-V,J-V,H-V,K-V) <-- do LDA on flux ratios to get a composite color: A
-#	gal_lat					> (we have to be careful with these -- strong sample bias?)
-#	gal_long				|
-#	closest_neighbor_dist	> To implement later. Shouldn't be extremely important
-#	closest_neighbor_mag    |
-#	closest_neighbor_flag	|
-#	
-#   for each period:
-#   ================
-#    max_lsp_power			
-#    best_lsp_period		
-#    min_stetson_len			using n_peaks from LSP (and searching around them) find minimum stetson len
-#    stetson_period				corresponding period
-#    max_dworetsky_len			
-#    (dworetsky_period)
-#    (min_resid_std)
-#	 amplitude
-#	 constant_offset
-#    pct_of_rms_explained
-#    (rms_of_residual)
-#    chi2_pf
-#
-#   for each harmonic:
-#   ------------------
-#		amplitude 				relative to the total amplitude
-#		phase 					relative to the 0th harmonic
-#
-def BinnedDistro(x, nbins=20, zrange=(-5, 5)):
+
+def BinnedDistro(x, nbins=50, zrange=(-5, 5)):
 	zmin, zmax = zrange
 	Z = (x - np.mean(x))/np.std(x)
 	dz = float(zmax - zmin)/float(nbins)
@@ -87,8 +38,7 @@ def ScaledMoment(x, N):
 	sig = np.std(x)
 	Z = (x - np.mean(x))/sig
 	return np.mean(np.power(Z, N))/(sig**N)
-def FeatureVectorFileName(hatid):
-	return "%s/%s-features-v3.pkl"%(feat_dir, hatid)
+
 Stetson = lambda t, x, p, err : stetson_single_per(t, x, p, err)
 Dworetsky = lambda t, x, p : dworetsky_single_per(t, x, p)
 def BinWidths(X):
@@ -124,12 +74,16 @@ def GetSearchPeriods(t, x, periods):
 	# Get L-S; weed out long periods
 	P, LSP = LombScargle(t, x)
 	P, LSP = ClipPeriods( P, LSP, 0., max_per )
+
 	# get a list of the top N peaks in the LSP
 	peaks,pows = find_n_peaks(P, LSP, n_peaks)
+
 	# weed out peaks that are harmonics
 	peaks = WeedOutHarmonicPeaks(peaks, periods)
+
 	# get the bin widths for each period (equal spacing in w ~ 1/p)
 	dP_lefts, dP_rights = BinWidths(P)
+
 	# Get periods surrounding the LSP peaks
 	search_pers = [ ]
 	for per in peaks:
@@ -150,13 +104,22 @@ def GetAmplitude(*args):
 	return 0.5*(max(X) - min(X))
 def Whiten(t, x, ws, amps, phs, c):
 	return t, get_resid( t, x, ws, amps, phs, c )
-def FitPeriods( t, x, periods=None, verbose=VERBOSE ):
+
+def FitPeriods( t, x, periods=None, verbose=VERBOSE, save_pcov=False, pcov_file=None):
+	pers, chi2s, stds = [], [], []
+
+	# If we are saving the fit covariance matrix, a filename needs to be specified
+	if save_pcov: assert(not pcov_file is None)
+
+	# Set the initial value of the residual to be the 
 	resid = np.zeros(len(x))
 	resid[:] = x[:]
-	std_total = np.std(x)
-	PERIODS, chi2s, stds = [], [], []
+
+	# Fiducial std deviation
+	std_fiducial = np.std(x)
+	
 	i=0
-	while len(PERIODS) < npers:
+	while len(pers) < npers:
 		# start timer
 		if verbose: t0 = time()
 		# Get subset of periods to search
@@ -167,41 +130,45 @@ def FitPeriods( t, x, periods=None, verbose=VERBOSE ):
 			if verbose: print "     seaching..."
 			# Find the period that minimizes the scatter in the residual
 		
-			search_pers = GetSearchPeriods(t, resid, PERIODS)
-			best_pers, sig_pers = find_best_of_n_periods(t,resid,search_pers,other_periods=PERIODS)
+			search_pers = GetSearchPeriods(t, resid, pers)
+			best_pers, sig_pers = find_best_of_n_periods(t,resid,search_pers,other_periods=pers)
 		
 			# End timer.
 			if verbose: dt = time() - t0
 			if verbose: print "     done (%f s)"%(dt)
 		
-		PERIODS.append(best_pers[0])
+		pers.append(best_pers[0])
 
 		# Now fit the period(s) to the data and update the residual.
-		fit_params = fit_periods(t, x, PERIODS, use_dwdt=False)
-		
-		# Analyze the residual
-		chi2s.append(get_chi2_pf(t,resid,PERIODS[-1]))
+		fit_params = fit_periods(t, x, pers, use_dwdt=False, return_errors=save_pcov)
+		print fit_params
+		# Get the chi2 of the phase-folded lightcurve
+		chi2s.append(get_chi2_pf(t,resid,pers[-1]))
 
 		if verbose: std_old = np.std(resid)	
+
+		# Get residual
 		resid[:] = get_resid(t, x, *fit_params)[:]
-		std_new = np.std(resid)
-		stds.append(std_new)
-		
-		
+		std_resid = np.std(resid)
+		stds.append(std_resid)
 
 		# Print relevant information
 		if verbose:
-			# Now phase fold the residual around the highest LSP peak, get the chi2
 			P, LSP = LombScargle(t, resid)
 			Pbest = P[np.argsort(LSP)[::-1][0]]
 
 			chi2_new = get_chi2_pf(t,resid,Pbest)
-			print "   PERIOD %d = %.5fd   chi2: %.3e --> %.3e [-dchi2 = %.3e]"%( len(PERIODS),  PERIODS[-1], chi2s[-1], chi2_new, chi2s[-1] - chi2_new)
-			print "                         std : %.3e --> %.3e [-dstd  = %.3e] = %.3f%% (%.3f%% of total rms)"%(std_old, std_new, std_old - std_new, 100*(std_old - std_new)/std_old, 100*(std_old - std_new)/std_total)
+			print "   PERIOD %d = %.5fd   chi2: %.3e --> %.3e [-dchi2 = %.3e]"%( len(pers),  pers[-1], chi2s[-1], chi2_new, chi2s[-1] - chi2_new)
+			print "                         std : %.3e --> %.3e [-dstd  = %.3e] = %.3f%% (%.3f%% of total rms)"%(std_old, std_new, std_old - std_resid, 100*(std_old - std_resid)/std_old, 100*(std_old - std_resid)/std_fiducial)
 		i+=1
-	ws, amps, phs, c = fit_params
+
+	# Save the covariance matrix of the fit if desired
+	if save_pcov:
+		ws, amps, phs, c, pcov = fit_params
+		pickle.dump(pcov, open(pcov_file,'wb'))
+	else:
+		ws, amps, phs, c = fit_params
 	return ws, amps, phs, c, chi2s, stds
-	#plot_fit(times,mags,ws,amps,phs,c,show=True)
 def SplitFitParam( par ):
 	return [ [ par[i*npers + j] for i in range(nharmonics) ] for j in range(npers) ]
 def SplitFitParams( ws, amps, phs, c ):
@@ -242,22 +209,17 @@ def MergeDicts(d1, d2):
 		d3[key1] = d1[key1]
 	for key2 in d2: d3[key2] = d2[key2]
 	return d3
-def GetPeriodicFeatures(t, x):
+def GetPeriodicFeatures(t, x, save_pcov=False, pcov_file=None):
 	features = {}
 
 	# Save Lomb-Scargle results for raw lightcurve
-	#print "  lomb-scargle features..."
-	#t0 = time()
 	lsp_raw_features = GetLombScargleFeatures(t, x, prefix='raw_')
-	#print "     done (%.3f s)"%(time() - t0)
 	features = MergeDicts(lsp_raw_features, features)
 
 	# Fit (multi-)periodic model to data
-	#print "  fit features..."
-	#t0 = time()
-	ws, amps, phs, c, chi2s, stds = FitPeriods(t, x, periods = [ lsp_raw_features['raw_lsp_peak1_period'] ])
-	#print "     done (%.3f s)"%(time() - t0)
+	ws, amps, phs, c, chi2s, stds = FitPeriods(t, x, periods = [ lsp_raw_features['raw_lsp_peak1_period'] ], save_pcov=save_pcov, pcov_file=pcov_file)
 	std = np.std(x)
+
 	# Reorganize arrays Arr = [ [ arr_p1h1, arr_p1h2, ... ], [ arr_p2h1, ... ] ]
 	WS, AMPS, PHS, C = SplitFitParams(ws, amps, phs, c)
 
@@ -342,11 +304,15 @@ def GetVariabilityFeatures(t, x ):
 	for i in range(len(distro)):
 		var_feats['binned_distro_z%.2f_%.2f'%(edges[i], edges[i+1])] = distro[i]
 	return var_feats
-def get_features(lc, nfreqs = npers, nharmonics=nharmonics, loud=False):
+def get_features(lc, nfreqs = npers, nharmonics=nharmonics, loud=False, detrend_vars=None):
 	Features = {}
+
 	if loud: print "detrending..."
 	if loud: t0 = time()
-	detrend(lc)
+	if not detrend_vars is None:
+		detrend(lc, detrend_vars=detrend_vars)
+	else:
+		detrend(lc)
 	if loud: dt = time() - t0
 	if loud: print "  done (%.3f s)"%(dt)
 

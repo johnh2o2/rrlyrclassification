@@ -12,7 +12,11 @@ import fastlombscargle as lsp
 from os.path import exists
 import readhatlc as rhlc
 
-data_dir = "/Users/jah5/Documents/Fall2014_Gaspar/data"
+parent_dir = "/Users/jah5/Documents/Fall2014_Gaspar"
+
+data_dir = "%s/data"%(parent_dir)
+model_dir = "%s/work/"%(parent_dir)
+feat_dir = "%s/features"%(parent_dir)
 time_col = 'BJD'
 grpsize = 10
 bad_ids = [ 'HAT-079-0000101', 'HAT-128-0000156', 'HAT-141-0001285', 'HAT-141-0004548', 'HAT-142-0004019'
@@ -21,7 +25,15 @@ bad_ids = [ 'HAT-079-0000101', 'HAT-128-0000156', 'HAT-141-0001285', 'HAT-141-00
 'HAT-362-0002588', 'HAT-388-0000557', ' HAT-135-0007139 ', 'HAT-189-0006202', 'HAT-239-0006835','HAT-241-0014081',
 'HAT-241-0018480']
 look_at_again = [ 'HAT-223-0003186', 'HAT-237-0002943', 'HAT-242-0026174', 'HAT-242-0034689','HAT-256-0005695',
-'HAT-292-0100671', 'HAT-332-0001158', 'HAT-339-0101490', 'HAT-363-0012214','HAT-431-0000070', 'HAT-437-0000456' ]
+'HAT-292-0100671', 'HAT-332-0001158', 'HAT-339-0101490', 'HAT-363-0012214','HAT-431-0000070', 'HAT-437-0000456', 
+'HAT-142-0004019', 'HAT-384-0061789', 'HAT-199-1738692', 'HAT-341-0078624', 'HAT-230-0003941', 'HAT-190-0005199',
+'HAT-167-0025662']
+#HAT-384-0061789 -- wrong period (v3); possibly improved by doing min(stetson). Also a dip prior to the peak?
+#HAT-199-1738692 -- RR Lyr but noisy
+#HAT-341-0078624 -- ^ same
+#HAT-230-0003941 -- ^ same
+#HAT-190-0005199 -- not sure what to make of this...
+#HAT-167-0025662 -- noisy
 variable_star_classes = {
 	'Eruptive' : ['FU', 'GCAS', 'I', 'IA', 'IB', 
 			'IN', 'INA', 'INB', 'INT', 'IT', 'IN(YY)', 
@@ -40,8 +52,10 @@ variable_star_classes = {
            'DS', 'DW', 'K', 'KE', 'KW', 'SD'],
     'RR Lyrae' : [ 'RRAB', 'RRC', 'R', 'RR', 'RR(B)' ]
 }
-feat_dir = "/Users/jah5/Documents/Fall2014_Gaspar/features"
-hat_features_fname = lambda hatid : "/Users/jah5/Documents/Fall2014_Gaspar/features/%s-features-v3.pkl"%(hatid)
+
+hat_features_fname = lambda hatid, model_name : "%s/%s-features-%s.pkl"%(feat_dir, hatid, model_name)
+FeatureVectorFileName = lambda hatid, model_name : hat_features_fname(hatid, model_name)
+FitCovarianceMatrixFileName = lambda hatid, model_name : "%s/%s-covmat-%s.pkl"%(feat_dir, hatid, model_name)
 
 COL_TYPE = 'TF'
 COL_SELECTION = 'locally-brightest'
@@ -647,37 +661,16 @@ def symmetry_measure(t, x, p, nbins=NBINS):
 		vals.append( (x1 - x2)**2/(e1**2/n1 + e2**2/n2) )
 	if len(vals) < 3: return None
 	else: return -sum(vals)/(len(vals) - 2)
-def fit_periods(t,x,ps, use_dwdt=False):
-	ws = tuple([ 2*np.pi/float(p) for p in ps ])
 
-	if use_dwdt:
-		ADD = 2
-		ff = lambda T, *args : fitting_function(T, nharmonics, len(ps), *(ws + args) )
-	else:
-		ADD = 1
-		def ff( T, *args ):
-			new_args = [ 0. ]
-			new_args.extend(args)
-			new_args = tuple(new_args)
-			return fitting_function(T, nharmonics, len(ps), *(ws + new_args) )
-		
-	# p0 is the initial guess for each parameter.
-	p0 = np.ones(2*nharmonics*len(ws) + ADD)
-	p0[0] = np.mean(x) # guess a constant offset of <magnitude> (this isn't crucial)
-	if use_dwdt: p0[1] = 0.
-	# fit!
-	popt, pcov = curve_fit(ff, t, x, p0=p0)
-
-	
-	# popt[0] is the constant offset.
-	# then it's (A,B) pairs for each harmonic, for each frequency: 
-	#		popt = [ C, A_f1h1, B_f1h1, A_f1h2, B_f1h2, ..., A_f1hNH, B_f1NH, A_f2h1, B_f2h1, ... ]
+def translate_popt_to_fit_params(popt, use_dwdt=False):
+	if use_dwdt: ADD = 2
+	else: ADD = 1
 	As = [ popt[ ADD + 2*(freq_no*nharmonics + harm_no)  ]
 				for harm_no in range(nharmonics) 
-			for freq_no in range(len(ws)) ]
+			for freq_no in range(npers) ]
 	Bs = [ popt[ ADD + 2*(freq_no*nharmonics + harm_no) + 1  ]
 				for harm_no in range(nharmonics) 
-			for freq_no in range(len(ws)) ]				  
+			for freq_no in range(npers) ]				  
 	
 
 
@@ -688,19 +681,53 @@ def fit_periods(t,x,ps, use_dwdt=False):
 			return np.arctan(B/A) + np.pi
 		else: return np.arctan(B/A)
 
-	angular_freqs = [  (harm_no+1)*ws[freq_no]
-						for harm_no in range(nharmonics)
-				 	for freq_no in range(len(ws)) ]
+	# popt[0] is the constant offset.
+	# then it's (A,B) pairs for each harmonic, for each frequency: 
+	#		popt = [ C, A_f1h1, B_f1h1, A_f1h2, B_f1h2, ..., A_f1hNH, B_f1NH, A_f2h1, B_f2h1, ... ]
 
 	amplitudes = 	[ 	sqrt(A**2 + B**2) 
 						for A,B in zip(As, Bs) ]
 
 	phases =     	[ 	phase_shift(float(A),float(B)) 
 						for A,B in zip(As, Bs) ]
+
 	if use_dwdt:
-		return angular_freqs, amplitudes, phases, popt[0], popt[1]
+		return amplitudes, phases, popt[0], popt[1]
 	else:
-		return angular_freqs, amplitudes, phases, popt[0]
+		return amplitudes, phases, popt[0]
+	
+def fit_periods(t,x,ps, use_dwdt=False, return_errors=False):
+	ws = [ 2*np.pi/float(p) for p in ps ]
+	frqs = [ ws[freq_no] * (harm_no + 1)
+				for harm_no in range(nharmonics) 
+			for freq_no in range(npers) ]
+
+	if use_dwdt:
+		ADD = 2
+		ff = lambda T, *args : fitting_function(T, nharmonics, len(ps), *(ws + args) )
+	else:
+		ADD = 1
+		def ff( T, *args ):
+			new_args = [ 0. ]
+			new_args.extend(args)
+			new_args = tuple(new_args)
+			return fitting_function(T, nharmonics, len(ps), *(tuple(ws) + new_args) )
+		
+	# p0 is the initial guess for each parameter.
+	p0 = np.ones(2*nharmonics*len(ws) + ADD)
+	p0[0] = np.mean(x) # guess a constant offset of <magnitude> (this isn't crucial)
+	if use_dwdt: p0[1] = 0.
+	# fit!
+	popt, pcov = curve_fit(ff, t, x, p0=p0, absolute_sigma=True)
+	fit_pars = translate_popt_to_fit_params(popt, use_dwdt=use_dwdt)
+	if return_errors:
+
+		return tuple([frqs]) + fit_pars + tuple([pcov])
+	else:
+		return tuple([frqs]) + fit_pars
+	
+	
+	
 def bs_fit_periods(t, x, ps, nsub=boot_size):
 	bst, bsx = bootstrapped_lc(t, x, nboots=1, bootsize=nsub)
 

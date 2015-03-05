@@ -23,9 +23,11 @@ match_cat_dt = np.dtype([
 		('vartype', 'S10'),
 		('dist', np.float_)
 	])
+model_name = "v4"
 num = None
 min_ndets = 20
-nfolds = 20
+nfolds = 50
+cutoff = 0.05
 #vartypes_to_classify = [ 'M', 'LB', 'EA', 'SR', 'EW', 
 #			'RRAB', 'BY', 'UV', 'EA/SD', 'SRB' , 'EB', 
 #			'RS', 'L', 'SRA', 'DSCTC', 'E', 'RRC', 
@@ -51,7 +53,7 @@ default_clfr = QDA
 #				'resid_lsp_peak1_power', 'resid_lsp_peak2_power', 'resid_lsp_peak3_power', 'resid_lsp_peak4_power', 'resid_lsp_peak5_power',
 #				'p1_lsp_peak1_power', 'p1_lsp_peak2_power', 'p1_lsp_peak3_power', 'p1_lsp_peak4_power', 'p1_lsp_peak5_power',
 #				'p2_lsp_peak1_power', 'p2_lsp_peak2_power', 'p2_lsp_peak3_power', 'p2_lsp_peak4_power', 'p2_lsp_peak5_power',
-skip_features = [ 'ra', 'dec', 'V', 'std', 
+skip_features = [ 'ra', 'dec', 'V', #'std', 'V'
 				'raw_lsp_peak1_stetson_strlen', 'raw_lsp_peak2_stetson_strlen', 'raw_lsp_peak3_stetson_strlen', 'raw_lsp_peak4_stetson_strlen',
 				'raw_lsp_peak5_stetson_strlen', 
 				'raw_lsp_peak1_dworetsky_strlen', 'raw_lsp_peak2_dworetsky_strlen', 'raw_lsp_peak3_dworetsky_strlen', 'raw_lsp_peak4_dworetsky_strlen',
@@ -70,6 +72,8 @@ skip_features = [ 'ra', 'dec', 'V', 'std',
 				'p2_lsp_peak5_stetson_strlen', 
 				   ]  
 mag_features = [ 'R-V', 'I-V', 'J-V', 'H-V', 'K-V' ]
+#mag_features = [ 'std' ]
+#mag_features = ['V']
 #mag_features = [ 'V' ]
 #mag_features = [ 'vmag' ]
 #mag_features = [  'R-V', 'I-V', 'J-V', 'H-V', 'K-V', 'p1_total_amplitude', 'p1h1_amplitude', 'p1h1_phase', 'p1h2_amplitude', 'p1h2_phase' ]
@@ -86,14 +90,13 @@ rfc_params = dict(
 	max_depth=None, 
 	min_samples_split=2, 
 	min_samples_leaf=1, 
-	max_features='auto', 
+	#max_features=None,#'auto', 
+	max_features='auto',
 	bootstrap=True, 
 	oob_score=False, 
 	n_jobs= -1, 
 	random_state=None, 
-	verbose=0, 
-	min_density=None, 
-	compute_importances=None
+	verbose=0
 )
 gridsearch_params = {
 	"estimator__gamma": [0.0001, 0.001, 0.01, 0.1, 1.0],
@@ -214,7 +217,7 @@ def SelectVmagRange(features, Vmin = None, Vmax = None):
 	return new_features
 
 def LoadFeatures(ID):
-	feat_fname = hat_features_fname(ID)
+	feat_fname = hat_features_fname(ID, model_name)
 	if os.path.exists(feat_fname) and not overwrite:
 		try:
 			return pickle.load(open(feat_fname, 'rb'))
@@ -225,6 +228,7 @@ def LoadFeatures(ID):
 		features = fs.get_features(LC)
 		pickle.dump(features, open(feat_fname, 'wb'))
 		return features
+		
 def LoadAllFeatures(IDs):
 	Features = {}
 	for ID in IDs:
@@ -233,12 +237,15 @@ def LoadAllFeatures(IDs):
 def CleanFeatures(feats):
 	cleaned_feats = {}
 	for ID in feats:
+		if feats[ID] is None: continue
 		cleaned_feats[ID] = {}
+
 		for f in feats[ID]:
 			if f in skip_features: continue
 			cleaned_feats[ID][f] = feats[ID][f]
 	return cleaned_feats
 def SplitFeatures(feats, split_feats):
+	if split_feats is None: return None, feats
 	feats1, feats2 = {},{}
 	for ID in feats:
 		feats1[ID], feats2[ID] = {},{}
@@ -261,7 +268,7 @@ def MakeObservations(feats, classes):
 			obs.append(feats[ID][f])
 		Observations.append(obs)
 	return np.array(IDs), np.array(Keylist), np.array(Observations), np.array(Labels)
-def PlotMagnitudeModelResults(probs, labels):
+def PlotProbHistogram(probs, labels, title="Histogram of classifier scores"):
 	#print probs, labels
 	fpr, tpr, _ = roc_curve( labels, probs )
 
@@ -274,10 +281,10 @@ def PlotMagnitudeModelResults(probs, labels):
 
 	f = plt.figure()
 	ax = f.add_subplot(111)
-	ax.set_title("classifier using color values")
+	ax.set_title(title)
 	colors = [ 'r', 'k', 'b', 'g', 'c' ]
 	for i, vt in enumerate(vartypes_to_classify):
-		ax.hist(probs_per_class[vt], color=colors[i], alpha=0.3, normed=True, label=vt, range=(0,1), bins=20)
+		ax.hist(probs_per_class[vt], color=colors[i], alpha=0.3, normed=True, label=vt, range=(0,1), bins=50)
 	
 	ax.set_ylabel("pdf")
 	ax.set_xlabel("Prob score")
@@ -460,7 +467,8 @@ LDA_ColorValues = np.array([ np.dot(cols, C) for C in MagObservations ])
 
 fprs_mag, fprs_other, fprs_comp, tprs_mag, tprs_other, tprs_comp  = [], [], [], [], [], []
 aucs_mag, aucs_other, aucs_comp = [], [], []
-
+all_pos, all_neg = [ ], []
+false_negatives, false_positives = [],[]
 
 def MakeCompositeModelFromScratch(xtrain, ytrain, CLFR=lambda : RandomForestClassifier(**rfc_params)):
 	
@@ -501,22 +509,24 @@ def ZipAndMerge(x1, x2):
 		X.append(x)
 	return np.array(X)
 fold_number = 0
+
 for train_index, test_index in StratifiedKFold(MagLabels, n_folds=nfolds,shuffle=True):
 	#print len(train_index), len([ l for l in MagLabels[train_index] if l == 1 ])
 	fold_number += 1
 	print "Training fold %d; %d training RR Lyrae"%(fold_number, len([ l for l in MagLabels[train_index] if l == 1 ]))
+
 	X_mag_train,   X_mag_test 		= MagObservations[train_index], MagObservations[test_index]
 	X_other_train, X_other_test 	= OtherObservations[train_index], OtherObservations[test_index]
-
+	IDs_train, IDs_test 			= OtherIDs[train_index], OtherIDs[test_index]
 	Y_train, Y_test 				= MagLabels[train_index], MagLabels[test_index]
+	assert(all(Y_train == OtherLabels[train_index]))
 	# We assume all labels are the same!! 
 
 	MagScaler, MagModel = MakeMagnitudeModel(X_mag_train, Y_train)
-	OtherScaler, OtherModel = MakeOtherModel(X_other_train, Y_train)
-	
-	OtherTrainProbs, OtherTestProbs = EvalModel(X_other_train, X_other_test, OtherScaler, OtherModel)
 	MagTrainProbs, MagTestProbs = EvalModel(X_mag_train, X_mag_test, MagScaler, MagModel)
-
+	
+	OtherScaler, OtherModel = MakeOtherModel(X_other_train, Y_train)
+	OtherTrainProbs, OtherTestProbs = EvalModel(X_other_train, X_other_test, OtherScaler, OtherModel)
 	#CompositeScaler, CompositeModel = MakeCompositeModelFromProbs(MagTrainProbs, OtherTrainProbs, Y_train)
 	
 	#X_comp_train = ZipAndMerge(MagTrainProbs, X_other_train)
@@ -527,6 +537,19 @@ for train_index, test_index in StratifiedKFold(MagLabels, n_folds=nfolds,shuffle
 	CompositeScaler, CompositeModel = MakeCompositeModelFromScratch(X_comp_train, Y_train)
 	CompositeTrainProbs, CompositeTestProbs = EvalModel(X_comp_train,X_comp_test,CompositeScaler, CompositeModel)
 
+	for i, ID, Prob in zip(np.arange(len(IDs_test)),IDs_test, CompositeTestProbs):
+		assert(categories[ID] == label_names[Y_test[i]])
+		if categories[ID] != 'none':
+			all_pos.append(Prob)
+		else:
+			all_neg.append(Prob)
+
+		#if categories['ID']
+		if abs(Y_test[i] - Prob) > 1 - cutoff:
+			if categories[ID] is 'none':
+				false_positives.append((ID, Prob))
+			else:
+				false_negatives.append((ID, Prob))
 	plot_both=False
 	if plot_both:
 		f = plt.figure()
@@ -545,10 +568,10 @@ for train_index, test_index in StratifiedKFold(MagLabels, n_folds=nfolds,shuffle
 		ax.set_xlim(0,1)
 		ax.set_ylim(0,1)
 		plt.show()
-	if fold_number == 1:
-		#PlotMagnitudeModelResults( MagProbs, Y_mag_test)
-		PlotRandomForestImportances( OtherModel, OtherKeylist )
-
+	#if fold_number == 1:
+		
+		#PlotRandomForestImportances( OtherModel, OtherKeylist )
+		#PlotProbHistogram(CompositeTestProbs, Y_test)
 	tpr, fpr, _ = roc_curve(Y_test, 1. - MagTestProbs)
 	tprs_mag.append(tpr)
 	fprs_mag.append(fpr)
@@ -575,10 +598,31 @@ ax_b = f.add_subplot(133)
 
 AddROCtoAxis(ax_m, tprs_mag, fprs_mag)
 AddROCtoAxis(ax_o, tprs_other, fprs_other, tpr_range=[0.9, 1.])
-AddROCtoAxis(ax_b, tprs_comp, fprs_comp, color='b', tpr_range=[0.95, 1], fpr_range=[0.0, 0.4])
+AddROCtoAxis(ax_b, tprs_comp, fprs_comp, color='b', tpr_range=[0.99, 1], fpr_range=[0.0, 0.4])
 ax_m.set_title("Magnitude data")
 ax_o.set_title("Other data")
 
+
+#for failure in failed_ids:
+print len(false_negatives), "False negatives (RR Lyrae with P(RRLyr) < %.2f)"%(cutoff)
+print len(false_positives), "False positives (non RR with P(RR) > %.2f)"%(cutoff)
+
+for ID, prob in false_negatives:
+	j = gcvs_crossmatches['id'].tolist().index(ID)
+	print ID, prob, gcvs_crossmatches['vartype'][j], categories[ID]
+for ID, prob in false_negatives:
+	print ID,
+print ""
+
+fhist = plt.figure()
+axhist = fhist.add_subplot(111)
+axhist.hist(all_pos, color='r', alpha=0.3, range=(0,1), bins=50, normed=True)
+axhist.hist(all_neg, color='k', alpha=0.3, range=(0,1), bins=50, normed=True)
+
+
+
+pickle.dump(MakeOtherModel(MagObservations, MagLabels), "%s/other_model_%d.clfr"%(model_dir, model_name))
+pickle.dump(MakeMagnitudeModel(OtherObservations, OtherLabels), "%s/mag_model_%d.clfr"%(model_dir, model_name))
 #f.subplots_adjust(bottom=0.18)
 plt.show()
 
