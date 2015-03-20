@@ -7,151 +7,13 @@ from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
 from scipy.stats import zscore as ZSCORE
 from fastperiod import specwindow, lombscargle
+from lcutils.lcutils_config import *
+from settings import *
 import sys, os, re
 import fastlombscargle as lsp
 from os.path import exists
 import readhatlc as rhlc
 
-parent_dir = "/Users/jah5/Documents/Fall2014_Gaspar"
-
-data_dir = "%s/data"%(parent_dir)
-model_dir = "%s/work/"%(parent_dir)
-feat_dir = "%s/features"%(parent_dir)
-time_col = 'BJD'
-grpsize = 10
-bad_ids = [ 'HAT-079-0000101', 'HAT-128-0000156', 'HAT-141-0001285', 'HAT-141-0004548', 'HAT-142-0004019'
-'HAT-150-0012878', 'HAT-168-0002894', 'HAT-189-0002780', 'HAT-196-0018339', 'HAT-207-0011053', 
-'HAT-248-0000036', 'HAT-277-0004093', 'HAT-287-0017860', 'HAT-292-0028865', 'HAT-339-0136924',
-'HAT-362-0002588', 'HAT-388-0000557', ' HAT-135-0007139 ', 'HAT-189-0006202', 'HAT-239-0006835','HAT-241-0014081',
-'HAT-241-0018480']
-look_at_again = [ 'HAT-223-0003186', 'HAT-237-0002943', 'HAT-242-0026174', 'HAT-242-0034689','HAT-256-0005695',
-'HAT-292-0100671', 'HAT-332-0001158', 'HAT-339-0101490', 'HAT-363-0012214','HAT-431-0000070', 'HAT-437-0000456', 
-'HAT-142-0004019', 'HAT-384-0061789', 'HAT-199-1738692', 'HAT-341-0078624', 'HAT-230-0003941', 'HAT-190-0005199',
-'HAT-167-0025662']
-#HAT-384-0061789 -- wrong period (v3); possibly improved by doing min(stetson). Also a dip prior to the peak?
-#HAT-199-1738692 -- RR Lyr but noisy
-#HAT-341-0078624 -- ^ same
-#HAT-230-0003941 -- ^ same
-#HAT-190-0005199 -- not sure what to make of this...
-#HAT-167-0025662 -- noisy
-variable_star_classes = {
-	'Eruptive' : ['FU', 'GCAS', 'I', 'IA', 'IB', 
-			'IN', 'INA', 'INB', 'INT', 'IT', 'IN(YY)', 
-			'IS', 'ISA', 'ISB', 'RCB', 'RS', 'SDOR', 'UV', 'UVN', 'WR'],
-
-	'Pulsating' : ['ACYG', 'BCEP', 'BCEPS', 'CEP', 'CEP(B)', 'CW', 'CWA', 'CWB', 'DCEP', 'DCEPS',
-           'DSCT', 'DSCTC', 'GDOR', 'L', 'LB', 'LC', 'M', 'PVTEL', 'RPHS', 'RR', 'RR(B)', 'RRAB',
-           'RRC', 'RV', 'RVA', 'RVB', 'SR', 'SRA', 'SRB', 'SRC', 'SRD', 'SXPHE', 'ZZ', 'ZZA', 'ZZB'],
-
-    'Rotating' : [ 'ACV', 'ACVO', 'BY', 'ELL', 'FKCOM', 'PSR', 'SXARI' ],
-
-    'Cataclysmic' : ['N', 'NA', 'NB', 'NC', 'NL', 'NR',
-           'SN', 'SNI', 'SNII', 'UG', 'UGSS', 'UGSU', 'UGZ', 'ZAND'],
-
-    'Eclipsing binary' : ['E', 'EA', 'EB', 'EW', 'GS', 'PN', 'RS', 'WD', 'WR', 'AR', 'D', 'DM',
-           'DS', 'DW', 'K', 'KE', 'KW', 'SD'],
-    'RR Lyrae' : [ 'RRAB', 'RRC', 'R', 'RR', 'RR(B)' ]
-}
-
-hat_features_fname = lambda hatid, model_name : "%s/%s-features-%s.pkl"%(feat_dir, hatid, model_name)
-FeatureVectorFileName = lambda hatid, model_name : hat_features_fname(hatid, model_name)
-FitCovarianceMatrixFileName = lambda hatid, model_name : "%s/%s-covmat-%s.pkl"%(feat_dir, hatid, model_name)
-
-COL_TYPE = 'TF'
-COL_SELECTION = 'locally-brightest'
-
-nharmonics = 8
-npers      = 1
-
-NPEAKS_TO_SAVE = 5
-
-n_peaks    = 1
-DELTA_I    = 10
-delta_P    = .01
-
-DPHASE     = 1.0
-NSEARCH    = 1
-
-ofac       = 3
-hifac      = 2
-MACC       = 3
-NBINS      = 50
-eps        = 10E-7
-max_per    = 10.
-
-use_bootstrap = True
-boot_size  = 100
-n_boots = 1
-fraction_of_smallest_stds_to_use = 0.5
-'''
-# v2
-COL_TYPE = 'TF'
-COL_SELECTION = 'locally-brightest'
-
-nharmonics = 6
-npers      = 2
-
-NPEAKS_TO_SAVE = 5
-
-n_peaks    = 5
-DELTA_I    = 10
-delta_P    = 1.0
-
-DPHASE     = 1.0
-NSEARCH    = 7
-
-ofac       = 4
-hifac      = 4
-MACC       = 4
-NBINS      = 50
-eps        = 10E-7
-max_per    = 10.
-
-use_bootstrap = True
-boot_size  = 500
-n_boots = 1
-fraction_of_smallest_stds_to_use = 0.5
-'''
-API_KEY = {
-    'lcdirect' : 'ZjNmZjQ0NzY4MTQxNzQ0Zjk1OTdlNzY1MTAxOTY1YTQyNDNlMzZlZmE2MWE3M2E3YTY0OWE1MDM5ZDU5NmRjYQ'
-}
-
-datafiles = os.listdir(data_dir)
-regexp = re.compile("(HAT-...-.......)-hatlc\.csv\.gz")
-available_hatids = []
-for df in datafiles:
-	result = regexp.match(df)
-	if result is None: continue
-	elif result.groups(1) is None: continue
-	else: hatid = result.groups(1)[0]
-	available_hatids.append(hatid)
-available_hatids = np.array(available_hatids)
-#print available_hatids[0]
-#print len(available_hatids)
-
-#def get_n_random_available_hatids(n):
-
-
-phs13_lcdir = "/nfs/phs3/ar1/lcserver/lightcurves"
-phs13_list_dt = np.dtype([
-		('hatid', 'S15'),
-		('ndet', np.int_),
-		('relative_path','S200')
-	])
-
-phs13_list_file = 'lcs_on_phs13_gcvs.txt'
-phs13_list = {}
-with open(phs13_list_file,'r') as f:
-	head = 0
-	for line in f:
-		if head < 2:
-			head += 1
-			continue
-		cols = [ l.strip() for l in line.split('|') ]
-		phs13_list[cols[0]] = {
-			'ndet' : int(cols[1]),
-			'relpath' : cols[2]
-			}
 
 
 def nancleaned(arr):
@@ -661,7 +523,38 @@ def symmetry_measure(t, x, p, nbins=NBINS):
 		vals.append( (x1 - x2)**2/(e1**2/n1 + e2**2/n2) )
 	if len(vals) < 3: return None
 	else: return -sum(vals)/(len(vals) - 2)
+def GetModelLightcurve(t, ws, amps, phs, c):
+	arr = np.array([ A*np.cos(W*t - P) for A, W, P in zip(amps, ws, phs) ])
+	mod = np.zeros(len(arr))
+	for i in range(len(mod)):
+		mod[i] = sum(arr[:,i]) + c
+	return mod
+def GetAmplitude(*args):
+	pers = 2*np.pi*np.power(args[0],-1)
+	T = np.linspace(0,max(pers))
+	X = GetModelLightcurve(T, *args)
+	
+	return 0.5*(max(X) - min(X))
+def SplitFitParam( par ):
+	return [ [ par[i*npers + j] for i in range(nharmonics) ] for j in range(npers) ]
+def SplitFitParams( ws, amps, phs, c ):
+	WS = SplitFitParam(ws)
+	AMPS =  SplitFitParam(amps)
+	PHS = SplitFitParam(phs)
+	C = [ c for i in range(npers) ] 
 
+	return WS, AMPS, PHS, C
+
+def translate_features_to_popt(features, use_dwdt=False):
+	popt = []
+	popt.append(features['constant_offset'])
+	for p in range(npers):
+		for h in range(nharmonics):
+			phi = features['p%dh%d_phase'%(p+1,h+1)]
+			amp = features['p%dh%d_amplitude'%(p+1, h+1)]
+			popt.append(amp*cos(phi))
+			popt.append(amp*sin(phi))
+	return popt
 def translate_popt_to_fit_params(popt, use_dwdt=False):
 	if use_dwdt: ADD = 2
 	else: ADD = 1
@@ -696,6 +589,24 @@ def translate_popt_to_fit_params(popt, use_dwdt=False):
 	else:
 		return amplitudes, phases, popt[0]
 	
+def translate_fit_params_to_features(amps,phs,c):
+	features = {}
+	features['constant_offset'] = c
+	WS, AMPS, PHS, C = SplitFitParams(np.ones(len(amps)), amps, phs, c)
+	for i in range(npers):
+		features['p%d_total_amplitude'%(i+1)] = GetAmplitude(WS[i], AMPS[i], PHS[i], C[i])
+
+		# Harmonic breakdown of this component
+		for j in range(nharmonics):
+			features['p%dh%d_amplitude'%(i+1, j+1)] = AMPS[i][j]
+			features['p%dh%d_phase'%(i+1, j+1)] = PHS[i][j]
+	return features
+
+def translate_popt_to_features(popt, use_dwdt=False):
+	fpars = translate_popt_to_fit_params(popt, use_dwdt=use_dwdt)
+	#print fpars
+	return translate_fit_params_to_features(*fpars)
+
 def fit_periods(t,x,ps, use_dwdt=False, return_errors=False):
 	ws = [ 2*np.pi/float(p) for p in ps ]
 	frqs = [ ws[freq_no] * (harm_no + 1)
@@ -1018,26 +929,161 @@ def get_blazhko(t, x, p, nps=2):
 
 	plt.show()
 
+def ZipAndMerge(x1, x2):
+	X = [ ]
+	assert(len(x1) == len(x2))
 
-#print "PHS13 files = %s"%(len(phs13_list))
-gcvs_m = []
-gcvs_m_types = {}
-with open('Full_GCVS_Cross-matched_HATIDS.catalog', 'r') as f:
-	for line in f:
-		splits = line.split(' ')
-		if 'HAT' in splits[0]: gcvs_m.append(splits[0])
+	for X1,X2 in zip(x1, x2):
 
-		#if 
+		if not hasattr(X1, '__iter__'):  X1 = [ X1 ]
+		if not hasattr(X2, '__iter__'):  X2 = [ X2 ]
+		x = []
+		x.extend(X1)
+		x.extend(X2)
+		X.append(x)
+	return np.array(X)
+
+def make_obs(Feats, keylist=None):
+
+	Obs = []
+	for F in Feats:
+		obs = []
+		if keylist is None:
+			for k in Feats[F]:
+				obs.append(Feats[F][k])
 		else:
-			continue
-		found_type = False
-		for i,s in enumerate(splits):
-			if i < len(splits) - 1 and i > 0:
-				if s != '': 
-					gcvs_m_types[splits[0]] = s
-					found_type = True
-		if not found_type: gcvs_m_types[splits[0]] = "?"
+			for k in keylist:
+				obs.append(Feats[F][k])
+		Obs.append(obs)
+	return np.array(Obs)
+def get_keylist(field, keylist_dir = keylist_dir, ssh_host_name=ssh_host_name):
+	keylist = {}
+	local_fname = "keylist_field%s.txt"%(field)
+	os.system("scp %s:%s/keylist.txt %s"%(ssh_host_name, keylist_dir, local_fname))
+	klist_data = np.loadtxt(local_fname, dtype=keylist_dt)
+	for kl in klist_data:
+		keylist[kl['TSTF']] = { }
+		for k in keylist_dt.names:
+			if k == 'TSTF': continue
+			keylist[kl['TSTF']][k] = kl[k]
+	return keylist
 
-#types_to_use = [ 'E', 'EW', 'EB', 'EA', 'R', 'RRAB', 'RRC', 'RR', 'RR(AB)' ]
-types_to_use = [ 'RRAB', 'RRC', 'RR', 'R']
-ids_to_use = [ hid for hid in gcvs_m if gcvs_m_types[hid] in types_to_use and os.path.exists(hat_fname(hid)) and not hid in bad_ids and not hid in look_at_again ]
+def load_2mass(field, twomass_remote_dir='~', twomass_fname='colors_field%s.dat', ssh_host_name=ssh_host_name):
+	twomass_dict = {}
+	twomass_local_fname = twomass_fname%(field)
+	if not os.path.exists(twomass_local_fname):
+		os.system("scp %s:%s/%s %s"%(ssh_host_name, twomass_remote_dir, twomass_local_fname, twomass_local_fname))
+	twomass_data = np.loadtxt(twomass_local_fname, dtype=twomass_dt)
+	#print twomass_data['hatid']
+	for tm in twomass_data:
+		#print tm, tm['hatid']
+		#sys.exit()
+		twomass_dict[tm['hatid']] = {}
+		for c in twomass_dt.names:
+			#print c
+			if c == 'hatid': continue
+			twomass_dict[tm['hatid']][c] = tm[c]
+
+	return twomass_dict
+def fix_times(lc, tcols = [ 'BJD' ]):
+	# just checks that the LC entries are in chronological order;
+	for tcol in tcols: assert(all([ lc[tcol][i+1] > lc[tcol][i] for i in range(len(lc[tcol] - 1)) ]) ) 
+	return lc
+def add_2mass(lc, tmdat):
+	lc['ra'] = tmdat['ra']
+	lc['dec'] = tmdat['dec']
+	lc['mags'] = [ tmdat[x] for x in ('Vmag', 'Rmag', 'Imag', 'jmag', 'hmag', 'kmag') ]
+	lc['ugriz'] = [ tmdat[x] for x in ( 'umag', 'gmag', 'rmag', 'imag', 'zmag' )]
+	lc['ndet'] = len(lc['TF1'])
+	
+
+	lc['cols'] = colnames
+
+	lc['twomassid'] = 0
+	lc['hatstations'] = np.unique(lc['STF'])
+	lc['filters'] = [ flt for flt in np.unique(lc['FLT']) ]
+	return lc
+def add_keylist_data(lc, kl):
+
+	cols = [ 'FLT', 'EXP', 'BJD' ]
+	for col in cols:
+		lc[col] = []
+
+	for i in range(len(lc['TF1'])):
+		for col in cols:
+			lc[col].append(kl[lc['TSTF'][i]][col])
+	for col in cols:
+		lc[col] = np.array(lc[col])
+	return lc
+
+
+def load_tfalc(local_fname):
+	lc = {}
+	for c in colnames: lc[c] = []
+	
+	with open(local_fname, 'r') as f:
+		for line in f:
+			data = line.split("#")
+			vals = data[0].split()
+			if len(vals) < len(colnames): continue
+			for i,c in enumerate(colnames):
+				lc[c].append(TEXTLC_OUTPUT_COLUMNS[c][3](vals[i]))
+	for c in colnames: lc[c] = np.array(lc[c])
+	lc['STF'] = []
+	lc['frame'] = []
+	for tstf in lc['TSTF']:
+		station, frame = tstf.split('-')
+		lc['STF'].append(station)
+		lc['frame'].append(frame)
+
+	lc['frame'] = np.array([ int(f) for f in lc['frame']])
+	lc['STF'] = np.array([ int(stf) for stf in lc['STF']])
+	return lc
+
+def get_mc_fit_features(features, pcov_file, N=100 ):
+	
+	assert(os.path.exists(pcov_file))
+	pcov = pickle.load(open(pcov_file,'rb'))
+	popt = translate_features_to_popt(features)
+
+	X = np.random.multivariate_normal(popt, pcov, N)
+	#print X[0]
+	##print X.shape, len(popt)
+	feats = []
+	for x in X:
+		fts = translate_popt_to_features(x)
+		for c in features:
+			if c in fts: continue
+			fts[c] = features[c]
+		feats.append(fts)
+	#print len(feats), feats[0]
+	return feats
+
+def score_features(features, pcov_file, iteration=0, N=5000, kind="other"):
+
+	mag_scaler, mag_model, other_scaler, other_model, \
+	skip_features, mag_features, vartypes_to_classify, \
+	other_keylist, mag_keylist = pickle.load(open(get_classifier_fname(iteration), 'rb'))
+
+	scalers = { 'mag' : mag_scaler, 'other' : other_scaler}
+	models  = { 'mag' : mag_model, 'other' : other_model}
+	observs = { 'mag' : None, 'other' : None}
+	scaler  =   scalers[kind]
+	model   =   models[kind]
+
+	feats = get_mc_fit_features(features,pcov_file,N=N)
+	Feats = { i : f for i, f in enumerate(feats)  }
+
+	F = CleanFeatures(Feats)
+	F = AddCustomFeatures(F)
+	
+	observs['mag'], observs['other'] = SplitFeatures(F, mag_features)
+
+	observations = make_obs(observs[kind], keylist=other_keylist)
+
+	if not scaler is None:
+		observations = scaler.transform(observations)
+	scores = model.predict_proba(observations)
+
+	return np.array([ s[1] for s in scores ])
+

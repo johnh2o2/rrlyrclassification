@@ -8,12 +8,14 @@ from math import *
 import mpi4py.MPI as mpi
 import feature_selection as fs
 import os
-os.environ['DYLD_LIBRARY_PATH'] = '/opt/local/lib'
+from settings import *
+os.environ['DYLD_LIBRARY_PATH'] = DYLD_LIBRARY_PATH
 from lcutils.lcutils_config import *
 from lcutils.lcutils_processing import get_hatnet_lc_locations, scp_fetch_hatnet_lcs, collect_fetched_lightcurves, consolidate_hatnet_lightcurves
 from utils import *
+from featureutils import *
 from hatbinlc import read_lc as read_binary_lc
-
+import cPickle as pickle
 comm = mpip.Comm()
 rank = comm.rank
 #HATLC_COL_DEFS
@@ -38,41 +40,8 @@ keylist_dir = "~/2007_hatnet_phot/G219/BASE"
 ssh_host_name = "phn1"
 #<hatid> <ra> <dec> <jmag> <jerr> <hmag> <herr> <kmag> <kerr> <flags> 
 #<Bmag> <Vmag> <Rmag> <Imag> <umag> <gmag> <rmag> <imag> <zmag> <hatfield> <hatfield objid>
-twomass_dt = np.dtype([ 	('hatid', 'S15'),
-						('ra', float),
-						('dec', float),
-						('jmag', float),
-						('jerr', float),
-						('hmag', float),
-						('herr', float),
-						('kmag', float),
-						('kerr', float),
-						('flags', 'S3'),
-						('Bmag', float),
-						('Vmag', float),
-						('Rmag', float),
-						('Imag', float),
-						('umag', float),
-						('gmag', float),
-						('rmag', float),
-						('imag', float),
-						('zmag', float),
-						('hatfield', int),
-						('hatfield objid', int)
-				])
-keylist_dt = np.dtype([
-		('TSTF', 'S8'),
-		('EXP', float),
-		('BJD', float),
-		('FLT', str),
-		('unknown1', float),
-		('unknown2', float),
-		('unknown3', float),
-		('unknown4', float),
-		('unknown5', float),
-		('unknown6', float),
-		('unknown7', float),
-	])
+
+
 #[objectinfo[x] for x in ('vmag','rmag','imag', 'jmag','hmag','kmag')]
 #p = mpip.startPool()
 
@@ -87,8 +56,6 @@ def get_keylist(field, keylist_dir = keylist_dir, ssh_host_name=ssh_host_name):
 			if k == 'TSTF': continue
 			keylist[kl['TSTF']][k] = kl[k]
 	return keylist
-
-
 def get_all_lc_filenames(field_number=219, ext="tfalc"):
 	hatid_remote_filenames = {}
 	# TODO
@@ -97,7 +64,6 @@ def get_remote_lc_fname(hatid, lctype=default_lctype, field_number = None):
 		field_number, ID = hatid.split('-')[1:]
 	fname = "%s/%s.%s"%(field_dirs[int(field_number)], hatid, lctype)
 	return fname
-
 def transfer_lc(remote_fname, local_fname=None, ssh_host_name=ssh_host_name):
 	fname = remote_fname.split("/")[-1]
 	move=True
@@ -114,7 +80,6 @@ def transfer_lc(remote_fname, local_fname=None, ssh_host_name=ssh_host_name):
 	assert(os.path.exists(local_fname))#, "scp of %s:%s didn't appear to work..."%(ssh_host_name, remote_fname))
 
 	return local_fname
-
 def load_2mass(field, twomass_remote_dir='~', twomass_fname='colors_field%s.dat', ssh_host_name=ssh_host_name):
 	twomass_dict = {}
 	twomass_local_fname = twomass_fname%(field)
@@ -132,13 +97,10 @@ def load_2mass(field, twomass_remote_dir='~', twomass_fname='colors_field%s.dat'
 			twomass_dict[tm['hatid']][c] = tm[c]
 
 	return twomass_dict
-
 def fix_times(lc, tcols = [ 'BJD' ]):
 	# just checks that the LC entries are in chronological order;
 	for tcol in tcols: assert(all([ lc[tcol][i+1] > lc[tcol][i] for i in range(len(lc[tcol] - 1)) ]) ) 
 	return lc
-
-
 def add_2mass(lc, tmdat):
 	lc['ra'] = tmdat['ra']
 	lc['dec'] = tmdat['dec']
@@ -153,7 +115,6 @@ def add_2mass(lc, tmdat):
 	lc['hatstations'] = np.unique(lc['STF'])
 	lc['filters'] = [ flt for flt in np.unique(lc['FLT']) ]
 	return lc
-
 def add_keylist_data(lc, kl):
 
 	cols = [ 'FLT', 'EXP', 'BJD' ]
@@ -196,7 +157,64 @@ def load_lightcurve(local_fname):
 	#return data
 
 
+def get_mc_fit_features(features, pcov_file, N=100 ):
+	
+	assert(os.path.exists(pcov_file))
+	pcov = pickle.load(open(pcov_file,'rb'))
+	popt = translate_features_to_popt(features)
 
+	X = np.random.multivariate_normal(popt, pcov, N)
+	#print X[0]
+	##print X.shape, len(popt)
+	feats = []
+	for x in X:
+		fts = translate_popt_to_features(x)
+		for c in features:
+			if c in fts: continue
+			fts[c] = features[c]
+		feats.append(fts)
+	#print len(feats), feats[0]
+	return feats
+def make_obs(Feats, keylist=None):
+
+	Obs = []
+	for F in Feats:
+		obs = []
+		if keylist is None:
+			for k in Feats[F]:
+				obs.append(Feats[F][k])
+		else:
+			for k in keylist:
+				obs.append(Feats[F][k])
+		Obs.append(obs)
+	return np.array(Obs)
+def score_features(features, pcov_file, model_name='v4', N=5000, kind="other"):
+
+	mag_scaler, mag_model, other_scaler, other_model, \
+	skip_features, mag_features, vartypes_to_classify, \
+	other_keylist, mag_keylist = pickle.load(open("%s/classifier_%s.clfr"%(model_dir, model_name), 'rb'))
+
+	scalers = { 'mag' : mag_scaler, 'other' : other_scaler}
+	models  = { 'mag' : mag_model, 'other' : other_model}
+	observs = { 'mag' : None, 'other' : None}
+	scaler  =   scalers[kind]
+	model   =   models[kind]
+
+	feats = get_mc_fit_features(features,pcov_file,N=N)
+	Feats = { i : f for i, f in enumerate(feats)  }
+
+	F = CleanFeatures(Feats)
+	F = AddCustomFeatures(F)
+	
+	observs['mag'], observs['other'] = SplitFeatures(F, mag_features)
+
+	observations = make_obs(observs[kind], keylist=other_keylist)
+
+	if not scaler is None:
+		observations = scaler.transform(observations)
+	scores = model.predict_proba(observations)
+
+	return np.array([ s[1] for s in scores ])
 def test_lcload(hatid, tm, keylist):
 	fname = transfer_lc("%s/%s.tfalc"%(rem_dir, hatid), local_fname="%s/%s.tfalc"%(data_dir, hatid))
 	lc = load_tfalc(fname)
@@ -207,17 +225,24 @@ def test_lcload(hatid, tm, keylist):
 	#print dat.columns
 	#print dat['TSTF']
 	#sys.exit()
-HATID = "HAT-173-0000563"
+#HATIDs = [ "HAT-199-1738692" ]
+#def retrieve_unlabeled_hatids
+HATIDs = [ 'HAT-161-0020286', 'HAT-285-0013544', 'HAT-235-0001251', 'HAT-388-0060110', 'HAT-079-0000101', 'HAT-173-0000563', 'HAT-199-1738692' ]
+#HATIDs = [ 'HAT-079-0000101', 'HAT-173-0000563', 'HAT-199-1738692' ]
+#HATIDs = [ 'HAT-161-0020286' ]
+
 
 if rank == 0:
-	#result = p.map('default', fs.get_features, X)
+	#pcov_file = get_pcov_file(HATID)
+	#lc = rhlc.read_hatlc(hat_fname(HATID))
+	#detrend(lc)
+	#t, x = get_t_x(lc)
+	#fts = fs.GetPeriodicFeatures(t, x, save_pcov=True, pcov_file=pcov_file)
+	'''
 	twomass_dict = load_2mass("219")
 	keylist = get_keylist("219")
-	#print [ key for key in twomass_dict ]
+	
 
-	#lc = test_lcload(HATID, twomass_dict[HATID], keylist)
-
-	#F = fs.get_features(lc, detrend_vars=[ 'STF' ], loud=True)
 	remote_fname =  get_remote_lc_fname(HATID, field_number=219)
 	#print remote_fname
 	local_fname = transfer_lc(remote_fname)
@@ -231,12 +256,35 @@ if rank == 0:
 	#lcdata, stfs = consolidate_hatnet_lightcurves(collected_lc_dict, removecollected=False)
 	#lcdict = process_consolidated_lightcurve(HATID, lcdata, colnames, database=None)
 	#for key in lcdict: print key
-	F = fs.get_features(lc, detrend_vars = ['STF'], loud=True)	
-	#kl = [ key for key in lc]
-	#print kl
-	#print lc['ndet']
-	#print lc['TSTF'][0]
-	#print lc['STF'][0]
-	#print lc['mags']
-	#print result
+	F = fs.get_features(lc, detrend_vars = ['STF'], loud=True, save_pcov=True, pcov_file=pcov_file)	
+	'''
+	Feats = LoadAllFeatures(HATIDs)
+
+	for ID in HATIDs:
+		#if Feats[ID] is None: 
+		#	print "Skipping", ID
+		#	continue
+		lc = rhlc.read_hatlc(hat_fname(ID))
+		if lc is None:
+			print "Skipping ", ID 
+			continue
+		F = fs.get_features(lc, loud=True, save_pcov=True, pcov_file=get_pcov_file(ID))
+		if F is None:
+			print "Skipping ", ID 
+			continue
+		scores = score_features(Feats[ID], pcov_file=get_pcov_file(ID))
+		#continue
+
+		#print np.mean(scores), np.std(scores)
+		PlotProbHistogram(scores, np.ones(len(scores)), title="Histogram of classifier scores for %s"%(ID), bins=50, logy=True)
+
+		# Maybe save an interpolation function for p(score)
+		# + Flag possible RRAB candidates
+		# + 
+
+		#print len(scores)
+		#print np.mean(scores), np.std(scores)
+		#plt.hist(scores, bins=10)
+		#plt.show()
+	
 #p.exit()

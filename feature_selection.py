@@ -90,18 +90,7 @@ def GetSearchPeriods(t, x, periods):
 		for E in np.linspace(-delta_P*dP_lefts[per], delta_P*dP_rights[per], NSEARCH):
 			search_pers.append( per+E )
 	return search_pers
-def GetModelLightcurve(t, ws, amps, phs, c):
-	arr = np.array([ A*np.cos(W*t - P) for A, W, P in zip(amps, ws, phs) ])
-	mod = np.zeros(len(arr))
-	for i in range(len(mod)):
-		mod[i] = sum(arr[:,i]) + c
-	return mod
-def GetAmplitude(*args):
-	pers = 2*np.pi*np.power(args[0],-1)
-	T = np.linspace(0,max(pers))
-	X = GetModelLightcurve(T, *args)
-	
-	return 0.5*(max(X) - min(X))
+
 def Whiten(t, x, ws, amps, phs, c):
 	return t, get_resid( t, x, ws, amps, phs, c )
 
@@ -136,19 +125,26 @@ def FitPeriods( t, x, periods=None, verbose=VERBOSE, save_pcov=False, pcov_file=
 			# End timer.
 			if verbose: dt = time() - t0
 			if verbose: print "     done (%f s)"%(dt)
-		
+		#print "Hi."
 		pers.append(best_pers[0])
 
 		# Now fit the period(s) to the data and update the residual.
 		fit_params = fit_periods(t, x, pers, use_dwdt=False, return_errors=save_pcov)
-		print fit_params
+		if save_pcov:
+			ws, amps, phs, c, pcov = fit_params
+		else:
+			ws, amps, phs, c = fit_params
+		#print "Did fit params"
+		#print fit_params
 		# Get the chi2 of the phase-folded lightcurve
 		chi2s.append(get_chi2_pf(t,resid,pers[-1]))
 
 		if verbose: std_old = np.std(resid)	
 
 		# Get residual
-		resid[:] = get_resid(t, x, *fit_params)[:]
+		if save_pcov:
+			ws, amps
+			resid[:] = get_resid(t, x, *(ws, amps, phs, c))[:]
 		std_resid = np.std(resid)
 		stds.append(std_resid)
 
@@ -163,21 +159,15 @@ def FitPeriods( t, x, periods=None, verbose=VERBOSE, save_pcov=False, pcov_file=
 		i+=1
 
 	# Save the covariance matrix of the fit if desired
-	if save_pcov:
-		ws, amps, phs, c, pcov = fit_params
+	if save_pcov: 
+		#print pcov
 		pickle.dump(pcov, open(pcov_file,'wb'))
-	else:
-		ws, amps, phs, c = fit_params
-	return ws, amps, phs, c, chi2s, stds
-def SplitFitParam( par ):
-	return [ [ par[i*npers + j] for i in range(nharmonics) ] for j in range(npers) ]
-def SplitFitParams( ws, amps, phs, c ):
-	WS = SplitFitParam(ws)
-	AMPS =  SplitFitParam(amps)
-	PHS = SplitFitParam(phs)
-	C = [ c for i in range(npers) ] 
+		#pc = pickle.load(open(pcov_file, 'rb'))
+		#print pc
+		#sys.exit()
 
-	return WS, AMPS, PHS, C
+	return ws, amps, phs, c, chi2s, stds
+
 def GetLombScargleFeatures(t, x, prefix='', npeaks = NPEAKS_TO_SAVE, add_stetson=True, add_dworetsky=True):
 	#t0 = time()
 	p, lsp = LombScargle(t, x)
@@ -228,10 +218,12 @@ def GetPeriodicFeatures(t, x, save_pcov=False, pcov_file=None):
 
 	# The chi2 for the phase-folded lightcurve around the best period
 	features['chi2_pf'] = chi2s[0]
-	features = {}
+	#features = {}
+	features['constant_offset'] = C[0]
 	for i in range(len(Pers)):
 
 		features['p%d'%(i+1)] = Pers[i]
+
 
 		# resid -- lightcurve whitened for all P != Pers[i]
 		# v-3 ignores this: resid = np.zeros(len(x))
@@ -304,8 +296,10 @@ def GetVariabilityFeatures(t, x ):
 	for i in range(len(distro)):
 		var_feats['binned_distro_z%.2f_%.2f'%(edges[i], edges[i+1])] = distro[i]
 	return var_feats
-def get_features(lc, nfreqs = npers, nharmonics=nharmonics, loud=False, detrend_vars=None):
+def get_features(lc, nfreqs = npers, nharmonics=nharmonics, loud=False, detrend_vars=None, save_pcov=False, pcov_file=None):
 	Features = {}
+	if save_pcov and pcov_file is None: raise Exception("get_features: save_pcov is True, but pcov_file is None")
+
 
 	if loud: print "detrending..."
 	if loud: t0 = time()
@@ -325,7 +319,7 @@ def get_features(lc, nfreqs = npers, nharmonics=nharmonics, loud=False, detrend_
 	if loud: print "  done (%.3f s)"%(dt)
 	if loud: print "getting periodic features..."
 	if loud: t0 = time()
-	Features = MergeDicts(Features, GetPeriodicFeatures(t, x))
+	Features = MergeDicts(Features, GetPeriodicFeatures(t, x, save_pcov=save_pcov, pcov_file=pcov_file))
 	if loud: dt = time() - t0
 	if loud: print "  done (%.3f s)"%(dt)
 	if loud: print "getting magnitude features..."

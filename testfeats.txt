@@ -1,0 +1,93 @@
+raw_lsp_peak4_power
+binned_distro_z-2.60_-2.40
+raw_lsp_peak5_period
+p1h6_phase
+p1 R4/R1
+binned_distro_z-3.40_-3.20
+raw_lsp_peak3_period
+p1h8_phase
+binned_distro_z-1.80_-1.60
+binned_distro_z1.20_1.40
+p1h7_phase
+binned_distro_z4.20_4.40
+binned_distro_z3.60_3.80
+binned_distro_z4.40_4.60
+binned_distro_z2.40_2.60
+p1h2_phase
+binned_distro_z-3.20_-3.00
+binned_distro_z4.80_5.00
+constant_offset
+binned_distro_z-2.80_-2.60
+median_absolute_deviation
+p1h4_amplitude
+binned_distro_z-2.40_-2.20
+binned_distro_z-1.40_-1.20
+binned_distro_z-4.40_-4.20
+binned_distro_z4.00_4.20
+p1_frac_of_rms_explained
+raw_lsp_peak4_period
+binned_distro_z-2.00_-1.80
+p1h7_amplitude
+binned_distro_z2.00_2.20
+p1 R5/R1
+p1h5_phase
+binned_distro_z-5.00_-4.80
+raw_lsp_peak3_power
+p1_total_amplitude
+binned_distro_z1.60_1.80
+binned_distro_z0.20_0.40
+binned_distro_z-4.80_-4.60
+raw_lsp_peak1_period
+raw_lsp_peak2_power
+binned_distro_z3.40_3.60
+binned_distro_z2.60_2.80
+binned_distro_z-4.00_-3.80
+binned_distro_z-3.80_-3.60
+binned_distro_z1.40_1.60
+p1h8_amplitude
+p1h2_amplitude
+raw_lsp_peak5_power
+binned_distro_z-0.60_-0.40
+p1h1_amplitude
+binned_distro_z-3.60_-3.40
+chi2_pf
+skew
+p1 R6/R1
+binned_distro_z2.80_3.00
+binned_distro_z-4.60_-4.40
+p1 R7/R1
+p1h4_phase
+binned_distro_z-3.00_-2.80
+raw_lsp_peak2_period
+kurtosis
+p1h1_phase
+binned_distro_z-1.00_-0.80
+std
+p1
+binned_distro_z1.80_2.00
+binned_distro_z1.00_1.20
+binned_distro_z-1.60_-1.40
+p1h3_amplitude
+binned_distro_z3.00_3.20
+binned_distro_z2.20_2.40
+binned_distro_z-4.20_-4.00
+raw_lsp_peak1_power
+p1h5_amplitude
+binned_distro_z-0.40_-0.20
+binned_distro_z-1.20_-1.00
+binned_distro_z4.60_4.80
+p1 R8/R1
+p1 R2/R1
+binned_distro_z0.40_0.60
+p1 R1/R1
+binned_distro_z-0.20_0.00
+p1h3_phase
+binned_distro_z-2.20_-2.00
+binned_distro_z0.80_1.00
+binned_distro_z0.60_0.80
+p1h6_amplitude
+p1 R3/R1
+binned_distro_z-0.80_-0.60
+binned_distro_z0.00_0.20
+binned_distro_z3.80_4.00
+binned_distro_z3.20_3.40
