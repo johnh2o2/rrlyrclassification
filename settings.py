@@ -1,15 +1,21 @@
 import re, sys, os
 from lcutils.lcutils_config import *
 
+RUNNING_ON_DELLA = True
 model_prefix = "rrab_v0"
 field_to_analyze = '219'
 
-parent_dir = "/Users/jah5/Documents/Fall2014_Gaspar"
-data_dir = "%s/data"%(parent_dir)
-model_dir = "%s/rrlyr_classification"%(parent_dir)
+if RUNNING_ON_DELLA:
+	parent_dir = '/home/jah5/rrlyr_search/rrlyrclassification'
+	SCRATCH = '/tigress/jah5/rrlyr_scratch'
+else:
+	parent_dir = '/Users/jah5/Documents/Fall2014_Gaspar'
+	SCRATCH = '%s/rrlyr_classification'%(parent_dir)
+	DYLD_LIBRARY_PATH = '/opt/local/lib'
+data_dir = '%s/data'%(SCRATCH)
+model_dir = "%s/models"%(SCRATCH)
 model_output_dir = "%s/%s"%(model_dir, model_prefix)
-feat_dir = "%s/features"%(parent_dir)
-DYLD_LIBRARY_PATH = '/opt/local/lib'
+feat_dir = "%s/features"%(SCRATCH)
 
 
 labeled_hatids_fname = "%s/labeled_hatids.txt"%(model_output_dir)
