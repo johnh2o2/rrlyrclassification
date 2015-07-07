@@ -13,7 +13,7 @@ import subprocess
 import shlex
 
 import numpy as np
-import pyfits
+import astropy.io.fits as pyfits
 
 #########################
 ## SETTINGS AND CONFIG ##
