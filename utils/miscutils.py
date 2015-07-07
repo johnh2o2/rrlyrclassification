@@ -1,8 +1,6 @@
 import pandas as pd 
 import numpy as np
-import defaults
 from math import *
-import defaults
 from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
 from scipy.stats import zscore as ZSCORE
@@ -12,9 +10,33 @@ from settings import *
 import sys, os, re
 import fastlombscargle as lsp
 from os.path import exists
+import cPickle as pickle
 import readhatlc as rhlc
 
+colnames = HATLC_COL_DEFS['hn']['tfalc']
+dts = {}
+for c in colnames:
+	dt = TEXTLC_OUTPUT_COLUMNS[c][3]
+	dts[c] = dt
 
+if not RUNNING_ON_DELLA:
+	get_lc_fname = get_gzipped_csv_lc_fname
+	load_lightcurve = lambda hatid : rhlc.read_hatlc(get_lc_fname(hatid))
+
+else:
+	get_lc_fname = get_raw_lc_fname
+	load_lightcurve = lambda hatid : load_full_tfalc(get_lc_fname(hatid), 
+														get_local_keylist_fname(field_to_analyze), 
+														get_local_2mass_fname(field_to_analyze))
+
+
+def get_iteration_number():
+	iteration = 1
+	while os.path.exists(get_classifier_fname(iteration)): iteration += 1
+	return iteration - 1
+
+def logprint(m):
+	if VERBOSE: print m
 
 def nancleaned(arr):
 	#print arr
@@ -28,30 +50,36 @@ def fit_out_linear_trend(t, x):
 		'slope' : params[1],
 		'mag0' : params[0]
 	}
-def is_available(hid):
-	fname = hat_fname(hid)
-	if not os.path.exists(fname): return False
-	try:
-		lc = rhlc.read_hatlc(fname)
-	except:
-		return False
-	if lc is None: return False
-	return True
-def get_n_random_available_hatids(n):
-	inds = np.arange(0,len(available_hatids))
-	np.random.shuffle(inds)
-	return available_hatids[inds[:n]]
-def fetch_lcs(hatids):
+##############################################
+
+
+#def is_available(hid):
+#	fname = hat_fname(hid)
+#	if not os.path.exists(fname): return False
+#	try:
+#		lc = rhlc.read_hatlc(fname)
+#	except:
+#		return False
+#	if lc is None: return False
+#	return True
+#def get_n_random_available_hatids(n):
+#	inds = np.arange(0,len(available_hatids))
+#	np.random.shuffle(inds)
+#	return available_hatids[inds[:n]]
+
+
+def fetch_lcs(hatids, verbose=True):
 	i = 0
 	lh = len(hatids)
 	while i < lh:
 		j = i+grpsize
 		if j > lh: j = lh
 		IDgrp = hatids[i:j]
-		filtered_grp = []
-		for ID in IDgrp:
-			if not os.path.exists(hat_fname(ID)): 
-				filtered_grp.append(ID)
+		filtered_grp = IDgrp
+		#filtered_grp = []
+		#for ID in IDgrp:
+		#	if not os.path.exists(hat_fname(ID)): 
+		#		filtered_grp.append(ID)
 		has_all = (len(filtered_grp) == 0)
 		if has_all: continue
 		idlist=""
@@ -59,30 +87,34 @@ def fetch_lcs(hatids):
 			idlist = "%s%s"%(idlist,ID)
 			if i < len(filtered_grp) - 1: idlist = "%s,"%(idlist)
 		url = 'https://hatsurveys.org/lightcurves/lc/direct?hatid=%s&apikey=%s'%(idlist, API_KEY['lcdirect'])
-		print url
+		if verbose: print url
 		fetch_command = "curl -J -O '%s'"%(url)
 		unzip_command = "unzip *zip; rm *zip"
 		os.system(fetch_command)
 		os.system(unzip_command)
 		os.system("mv *hatlc*gz %s"%(data_dir))
 		i += j
-def make_batch_dl_file(hatids):
-	script = "#!/bin/bash\n mkdir gcvs_source_lcs\n"
-	for hid in hatids:
-		if hid not in phs13_list: continue
-		script= "%s cp %s/%s gcvs_source_lcs/%s-hatlc.csv.gz\n"%(script, phs13_lcdir, phs13_list[hid]['relpath'], hid)
-	script = "%s tar cvf gcvs_source_lcs.tar gcvs_source_lcs/*"%(script)
-	with open("dlscript.sh",'w') as sfile:
-		sfile.write(script)
-def fetch_lc_from_phs13(hatid):
-	if hatid in phs13_list:
-		remote_fname = "%s/%s"%(phs13_lcdir, phs13_list[hatid]['relpath'])
-		command = "scp -i ~/.ssh/id_dsa hat:%s %s/%s-hatlc.csv.gz"%(remote_fname, data_dir, hatid)
-		os.system( command )
-		return True
-	else: return False
-def fetch_lcs_from_phs13(hatids):
-	for hid in hatids: fetch_lc_from_phs13(hid)
+#def make_batch_dl_file(hatids):
+#	script = "#!/bin/bash\n mkdir gcvs_source_lcs\n"
+#	for hid in hatids:
+#		if hid not in phs13_list: continue
+#		script= "%s cp %s/%s gcvs_source_lcs/%s-hatlc.csv.gz\n"%(script, phs13_lcdir, phs13_list[hid]['relpath'], hid)
+#	script = "%s tar cvf gcvs_source_lcs.tar gcvs_source_lcs/*"%(script)
+#	with open("dlscript.sh",'w') as sfile:
+#		sfile.write(script)
+#def fetch_lc_from_phs13(hatid):
+#	if hatid in phs13_list:
+#		remote_fname = "%s/%s"%(phs13_lcdir, phs13_list[hatid]['relpath'])
+#		command = "scp -i ~/.ssh/id_dsa hat:%s %s/%s-hatlc.csv.gz"%(remote_fname, data_dir, hatid)
+#		os.system( command )
+#		return True
+#	else: return False
+#def fetch_lcs_from_phs13(hatids):
+#	for hid in hatids: fetch_lc_from_phs13(hid)
+
+
+#############################
+
 def get_t_x(lc, coltype='TF',selection='locally-brightest', ttype='BJD'):
 	t = []
 	x = []
@@ -143,7 +175,7 @@ def is_peak(powers, i, imin, imax, per, peak_pers):
     return True
 
 
-def find_n_peaks(periods, powers, n_peaks, dn=defaults.settings['peaks-dn']):
+def find_n_peaks(periods, powers, n_peaks, dn=7):
     peak_periods, peak_powers = [], []
     inds = np.argsort(powers)[::-1]
     J=0
@@ -1040,50 +1072,9 @@ def load_tfalc(local_fname):
 	lc['STF'] = np.array([ int(stf) for stf in lc['STF']])
 	return lc
 
-def get_mc_fit_features(features, pcov_file, N=100 ):
-	
-	assert(os.path.exists(pcov_file))
-	pcov = pickle.load(open(pcov_file,'rb'))
-	popt = translate_features_to_popt(features)
-
-	X = np.random.multivariate_normal(popt, pcov, N)
-	#print X[0]
-	##print X.shape, len(popt)
-	feats = []
-	for x in X:
-		fts = translate_popt_to_features(x)
-		for c in features:
-			if c in fts: continue
-			fts[c] = features[c]
-		feats.append(fts)
-	#print len(feats), feats[0]
-	return feats
-
-def score_features(features, pcov_file, iteration=0, N=5000, kind="other"):
-
-	mag_scaler, mag_model, other_scaler, other_model, \
-	skip_features, mag_features, vartypes_to_classify, \
-	other_keylist, mag_keylist = pickle.load(open(get_classifier_fname(iteration), 'rb'))
-
-	scalers = { 'mag' : mag_scaler, 'other' : other_scaler}
-	models  = { 'mag' : mag_model, 'other' : other_model}
-	observs = { 'mag' : None, 'other' : None}
-	scaler  =   scalers[kind]
-	model   =   models[kind]
-
-	feats = get_mc_fit_features(features,pcov_file,N=N)
-	Feats = { i : f for i, f in enumerate(feats)  }
-
-	F = CleanFeatures(Feats)
-	F = AddCustomFeatures(F)
-	
-	observs['mag'], observs['other'] = SplitFeatures(F, mag_features)
-
-	observations = make_obs(observs[kind], keylist=other_keylist)
-
-	if not scaler is None:
-		observations = scaler.transform(observations)
-	scores = model.predict_proba(observations)
-
-	return np.array([ s[1] for s in scores ])
+def load_full_tfalc(local_fname, keylist_dat, twomass_dat):
+	lc = load_tfalc
+	lc = add_keylist_data(lc, keylist_dat)
+	lc = add_2mass(lc, twomass_dat)
+	return lc
 

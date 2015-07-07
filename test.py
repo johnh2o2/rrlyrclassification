@@ -9,7 +9,7 @@ import mpi4py.MPI as mpi
 import feature_selection as fs
 import os
 from settings import *
-os.environ['DYLD_LIBRARY_PATH'] = DYLD_LIBRARY_PATH
+if not RUNNING_ON_DELLA: os.environ['DYLD_LIBRARY_PATH'] = DYLD_LIBRARY_PATH
 from lcutils.lcutils_config import *
 from lcutils.lcutils_processing import get_hatnet_lc_locations, scp_fetch_hatnet_lcs, collect_fetched_lightcurves, consolidate_hatnet_lightcurves
 from utils import *

@@ -3,23 +3,26 @@ from multiprocessing import Pool
 from scipy.optimize import curve_fit
 from scipy.stats import skew, kurtosis
 from fastperiod import specwindow, lombscargle, dworetsky, stetson, dworetsky_single_per, stetson_single_per
+from fastlombscargle import fasper
 import sys, os, re
 #from fastlombscargle import fasper
-from lsp import fasper
+#from lsp import fasper
 from os.path import exists
 import matplotlib.pyplot as plt
 from math import *
-from utils import *
+from miscutils import *
+from settings import *
 from time import time
 import readhatlc as rhlc
 import cPickle as pickle
 VERBOSE=False
 
-small = eps
+small = 1E-6
 FORCE_REDO = True
 FORCE_IDLIST_REDO = False
 NPROC=4
 min_nobs = 20
+
 
 def BinnedDistro(x, nbins=50, zrange=(-5, 5)):
 	zmin, zmax = zrange
@@ -143,7 +146,7 @@ def FitPeriods( t, x, periods=None, verbose=VERBOSE, save_pcov=False, pcov_file=
 
 		# Get residual
 		if save_pcov:
-			ws, amps
+			#ws, amps #?????
 			resid[:] = get_resid(t, x, *(ws, amps, phs, c))[:]
 		std_resid = np.std(resid)
 		stds.append(std_resid)

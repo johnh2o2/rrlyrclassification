@@ -12,9 +12,10 @@ import matplotlib.pyplot as plt
 import readhatlc as rhlc
 import numpy as np
 import os, sys
+from settings import *
 from scipy.interpolate import interp1d
 import feature_selection as fs
-from utils import *
+from miscutils import *
 import cPickle as pickle
 from sklearn.metrics import confusion_matrix
 
@@ -22,12 +23,16 @@ def LoadLabeledHatIDs():
 	dat = np.loadtxt(get_labeled_hatids_fname(), dtype=dt_labeled_hatids)
 	categories = {}
 	for d in dat:
-		categories[d['ID']] = dat['label']
+		categories[d['ID']] = d['label']
 	return dat['ID'], categories
 
 #def LoadUnlabeledHatIDs(): 
 
-
+def SaveLabeledHatIDs(categories, iteration):
+	f = open(get_labeled_hatids_fname(), 'w')
+	for ID in categories:
+		f.write("%-20s%-10i%-20s\n"%(ID, iteration, categories[ID]))
+	f.close()
 
 def GCVS_GetVartypeClasses(vt):
 	classes = []
@@ -78,34 +83,32 @@ def GCVS_GetRandomSample(num, cat):
 def GetHATIDsToFetch(IDs):
 	ids_to_fetch = []
 	for ID in IDs:
-		if not os.path.exists(hat_fname(ID)): ids_to_fetch.append(ID)
+		if not os.path.exists(get_lc_fname(ID)): ids_to_fetch.append(ID)
 	return ids_to_fetch
 def GetCategoriesForEachHATID(cat):
 	categories = {}
 	for source in cat:
 		categories[source['id']] = GCVS_GetVartypeNameToUse(source['vartype'])
 	return categories
+
+
+
 def GetGoodHATIDs(IDs, categs ):
 	good_ids = []
 	i=0
 	for ID in IDs:
 		i += 1
-		print ID, i, len(IDs), 
-		if not ID in phs13_list: 
-			print ""
-			continue
-		if categs[ID] not in vartypes_to_classify: 
-			print ""
-			continue
-		if os.path.exists(hat_fname(ID)) \
-			and phs13_list[ID]['ndet'] > min_ndets \
-			and not LoadFeatures(ID) is None\
-			and not ( ID in bad_ids or ID in look_at_again):
-				print " YAY!"
-				#and feats[ID]['V'] < 11.5
-				good_ids.append(ID)
-		else:
-			print ""
+		#print ID, i, len(IDs), 
+		#if not ID in phs13_list: 
+		#	print ""
+		#	continue
+		if ID in bad_ids or ID in look_at_again:				continue
+		if categs[ID] not in vartypes_to_classify: 				continue
+		if not os.path.exists(get_lc_fname(ID)): 				continue
+		if LoadFeatures(ID) is None: 							continue
+		
+		good_ids.append(ID)
+		
 
 		
 	return good_ids
@@ -270,15 +273,21 @@ def AddCustomFeatures(features):
 		new_features[ID] = AddCustomFeature(features[ID])
 	return new_features
 def LoadFeatures(ID):
+	logprint("  featureutils (LoadFeatures): loading features for hatid: %s"%(ID))
+
 	feat_fname = hat_features_fname(ID, model_prefix)
 	if os.path.exists(feat_fname) and not overwrite:
 		try:
 			return pickle.load(open(feat_fname, 'rb'))
+
 		except: 
 			raise Exception("Cannot load features for HAT-ID %s (filename: '%s')"%(ID, feat_fname))
 	else:
-		LC = rhlc.read_hatlc(hat_fname(ID))
-		if LC is None: return None
+		logprint("                             : no features found; generating them!")
+		LC = load_lightcurve(ID)
+		if LC is None: 
+			logprint("                             : LC is NONE :(")
+			return None
 		features = fs.get_features(LC, save_pcov=True, pcov_file=get_pcov_file(ID))
 		pickle.dump(features, open(feat_fname, 'wb'))
 		return features
@@ -313,11 +322,63 @@ def MakeObservations(feats, classes):
 
 	ids = [ ID for ID in feats ]
 	Keylist = [ f for f in feats[ids[0]] ]
+	#print integer_labels, classes
 	for ID in feats:
 		IDs.append(ID)
+		#print classes[ID]
 		Labels.append(integer_labels[classes[ID]])
 		obs = []
 		for k in Keylist:
 			obs.append(feats[ID][k])
 		Observations.append(obs)
 	return np.array(IDs), np.array(Keylist), np.array(Observations), np.array(Labels)
+
+
+
+def get_mc_fit_features(features, pcov_file, N=100 ):
+	
+	assert(os.path.exists(pcov_file))
+	pcov = pickle.load(open(pcov_file,'rb'))
+	popt = translate_features_to_popt(features)
+
+	X = np.random.multivariate_normal(popt, pcov, N)
+	#print X[0]
+	##print X.shape, len(popt)
+	feats = []
+	for x in X:
+		fts = translate_popt_to_features(x)
+		for c in features:
+			if c in fts: continue
+			fts[c] = features[c]
+		feats.append(fts)
+	#print len(feats), feats[0]
+	return feats
+
+def score_features(features, pcov_file, iteration=0, N=5000, kind="other"):
+
+	mag_scaler, mag_model, other_scaler, other_model, \
+	skip_features, mag_features, vartypes_to_classify, \
+	other_keylist, mag_keylist = pickle.load(open(get_classifier_fname(iteration), 'rb'))
+
+	scalers = { 'mag' : mag_scaler, 'other' : other_scaler}
+	models  = { 'mag' : mag_model, 'other' : other_model}
+	observs = { 'mag' : None, 'other' : None}
+	scaler  =   scalers[kind]
+	model   =   models[kind]
+
+	feats = get_mc_fit_features(features,pcov_file,N=N)
+	Feats = { i : f for i, f in enumerate(feats)  }
+
+	F = CleanFeatures(Feats)
+	F = AddCustomFeatures(F)
+	
+	observs['mag'], observs['other'] = SplitFeatures(F, mag_features)
+
+	observations = make_obs(observs[kind], keylist=other_keylist)
+
+	if not scaler is None:
+		observations = scaler.transform(observations)
+	scores = model.predict_proba(observations)
+
+	return np.array([ s[1] for s in scores ])
+

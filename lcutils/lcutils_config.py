@@ -10,7 +10,7 @@ Contains config variables for lcutils.py.
 import ConfigParser
 import os.path
 
-LCCACHE = "/Users/jah5/Documents/Fall2014_Gaspar/rrlyr_classification/lccache"
+from settings import *
 
 '''
 #########################

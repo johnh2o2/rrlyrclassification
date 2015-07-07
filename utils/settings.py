@@ -1,0 +1,1 @@
+/Users/jah5/Documents/Fall2014_Gaspar/rrlyr_classification/settings.py

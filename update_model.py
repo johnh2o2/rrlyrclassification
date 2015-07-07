@@ -9,25 +9,28 @@ from sklearn.multiclass import OneVsRestClassifier
 from sklearn.metrics import roc_curve, auc, accuracy_score
 from sklearn.grid_search import GridSearchCV
 import matplotlib.pyplot as plt
-import readhatlc as rhlc
+
 import numpy as np
 import os, sys
 from scipy.interpolate import interp1d
-import feature_selection as fs
-from utils import *
-from featureutils import *
+
+import utils.feature_selection as fs
+from utils.miscutils import *
+from utils.featureutils import *
+import utils.readhatlc as rhlc
 from settings import *
 import cPickle as pickle
 from sklearn.metrics import confusion_matrix
 
 # What iteration are we on?
-iteration = 1
-while not os.path.exists(get_classifier_fname(iteration)): iteration += 1
+iteration = get_iteration_number() 
+logprint("Updating model; iteration %d"%(iteration))
 
 # Get the labeled HATIDs.
+logprint("Loading labeled HATIDs")
 hatids, categories = LoadLabeledHatIDs()
 
-print "Getting features..."
+logprint("Getting features...")
 Full_Features 						= LoadAllFeatures(hatids)
 #PlotMagnitudeDist(Full_Features)
 #obs_mag = {}
@@ -49,17 +52,21 @@ for ID in Full_Features:
 	else: nnone+=1
 print nnone, nrr
 '''
-print "Cleaning features..."
+logprint("Cleaning features...")
 Features 							= CleanFeatures(Full_Features)
+logprint("Adding custom features...")
 Features                            = AddCustomFeatures(Features)
+logprint("Splitting features into magnitudes and (others)...")
 MagFeatures, OtherFeatures 			= SplitFeatures(Features, mag_features)
 
 #flist = [ f for f in OtherFeatures[hatids[0]] ]
 #print flist, len(flist)
 # Convert to observations.
 
-if not MagFeatures is None: 
+if not MagFeatures is None:
+	logprint("Making training samples for the magnitude data")
 	MagIDs, MagKeylist, MagObservations, MagLabels = MakeObservations(MagFeatures, categories)
+logprint("Making training samples for the other data")
 OtherIDs, OtherKeylist, OtherObservations, OtherLabels = MakeObservations(OtherFeatures, categories)
 #for o in OtherKeylist: print o
 #sys.exit()
@@ -86,11 +93,12 @@ def MakeCompositeModelFromProbs(xtrain1, xtrain2, ytrain, CLFR=LDA):
 	return scaler, clfr
 
 fold_number = 0
-
+logprint("TRAINING:")
 for train_index, test_index in StratifiedKFold(MagLabels, n_folds=nfolds,shuffle=True):
+
 	#print len(train_index), len([ l for l in MagLabels[train_index] if l == 1 ])
 	fold_number += 1
-	print "Training fold %d; %d training RR Lyrae"%(fold_number, len([ l for l in MagLabels[train_index] if l == 1 ]))
+	logprint("  training fold %d; %d training RR Lyrae"%(fold_number, len([ l for l in MagLabels[train_index] if l == 1 ])))
 
 	X_mag_train,   X_mag_test 		= MagObservations[train_index], MagObservations[test_index]
 	X_other_train, X_other_test 	= OtherObservations[train_index], OtherObservations[test_index]
@@ -182,6 +190,8 @@ ax_o.set_title("Other data")
 print len(false_negatives), "False negatives (RR Lyrae with P(RRLyr) < %.2f)"%(cutoff)
 print len(false_positives), "False positives (non RR with P(RR) > %.2f)"%(cutoff)
 
+gcvs_crossmatches 					= np.loadtxt(full_gcvs_match_cat_fname , dtype=match_cat_dt)
+
 for ID, prob in false_negatives:
 	j = gcvs_crossmatches['id'].tolist().index(ID)
 	print ID, prob, gcvs_crossmatches['vartype'][j], categories[ID]
@@ -195,7 +205,7 @@ axhist.hist(all_pos, color='r', alpha=0.3, range=(0,1), bins=50, normed=True)
 axhist.hist(all_neg, color='k', alpha=0.3, range=(0,1), bins=50, normed=True)
 
 pickle.dump(MakeOtherModel(MagObservations, MagLabels) + MakeMagnitudeModel(OtherObservations, OtherLabels) + \
-	(skip_features, mag_features,vartypes_to_classify, OtherKeylist, MagKeylist), open(get_classifier_fname(iteration), 'wb'))
+	(skip_features, mag_features,vartypes_to_classify, OtherKeylist, MagKeylist), open(get_classifier_fname(iteration + 1), 'wb'))
 
 #f.subplots_adjust(bottom=0.18)
 plt.show()
