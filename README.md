@@ -8,6 +8,7 @@ The directory setup is a bit overwhelming at the moment, but the basics of getti
 
 *  Run `setup.py` (build/install) to install the Cython LSP algorithm
 *  Install any dependencies, including
+	* [PyVislc](https://github.com/johnh2o2/pyvislc)
 	* numpy
 	* matplotlib
 	* scipy
