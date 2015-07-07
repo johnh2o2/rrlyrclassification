@@ -15,17 +15,18 @@ VERBOSE = True
 
 if RUNNING_ON_DELLA:
 	parent_dir = '/home/jah5/rrlyr_search/rrlyrclassification'
+	SCRATCH = "/tigress/jah5/rrlyr_scratch"
 else:
 	parent_dir = '/Users/jah5/Documents/Fall2014_Gaspar/rrlyr_classification'
 	#SCRATCH = '%s'%(parent_dir)
 	DYLD_LIBRARY_PATH = '/opt/local/lib'
-
+	SCRATCH = "%s/SCRATCH"%(parent_dir)
 
 	NFILES_MAX = 10
 	min_score = -1.0
 
 remote_keylist_fname = lambda field : '/nfs/phn11/ar1/H/BIGPROJ/hatuser/2007_hatnet_phot/G%s/BASE/keylist.txt'%(field)
-SCRATCH = "%s/SCRATCH"%(parent_dir)
+
 
 if not os.path.isdir(SCRATCH):
 	print "Did not locate a 'SCRATCH' directory in the parent directory (%s)."%(parent_dir)
