@@ -20,3 +20,18 @@
 * Should have a seamless way to just fetch a lightcurve -- the module/function should be able to deal with `.tfalc`, `csv.gz`, etc. Maybe it could just return a standardized dictionary of information
 * Debugging the `create_initial_labeled_hatids.py` script; what a nightmare. 
 
+#July 8, 2015
+
+* Porting everything to della
+* Problems arising -- need to install fastlombscargle, etc. Maybe there's a global setup.py file that would work?
+* Paramiko wasn't installed...I thought it was? I ran `python setup.py install --user` in the `paramiko` directory. That seems to have solved the problem...
+* `update_model.py` is NOT parallelized (yet; working on it).
+	* Needs to be master-slave for getting features.
+	* Needs to NOT just load the csv file from the server (which defeats the entire purpose of what we're doing here...)
+	* Memory concerns:
+		* 89 features (as of now); assume double precision (8 bytes). There are <~ 6 * 10^6 total hatids. Loading all of the features into a single object will take: (89 features) * (8 bytes/feature) * (6 * 10^6 objects) / 10^9 Gb = 4.272 Gb. So, for individual fields (for the time being) we should be fine on memory (4-8 Gb per core on Della).
+* To make things work more parallel, I decided to go with bagging models (#bags = #cores at the moment)
+	* Debugging status: things are hanging up in the `masterslave.py` file...still not sure what the cause of this is...
+		* This was caused by an empty sublist in the `work_packets` list.
+	* Need to extend pickle for I/O
+	* 

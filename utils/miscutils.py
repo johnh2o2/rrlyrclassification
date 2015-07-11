@@ -5,6 +5,7 @@ from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
 from scipy.stats import zscore as ZSCORE
 from fastperiod import specwindow, lombscargle
+from sklearn.lda import LDA
 from lcutils.lcutils_config import *
 from settings import *
 import sys, os, re
@@ -12,12 +13,19 @@ import fastlombscargle as lsp
 from os.path import exists
 import cPickle as pickle
 import readhatlc as rhlc
+from mpi4py import MPI
+
+comm = MPI.COMM_WORLD
+size = comm.Get_size()
+rank = comm.Get_rank()
+ROOT = (rank == 0)
 
 colnames = HATLC_COL_DEFS['hn']['tfalc']
 dts = {}
 for c in colnames:
 	dt = TEXTLC_OUTPUT_COLUMNS[c][3]
 	dts[c] = dt
+
 
 if not RUNNING_ON_DELLA:
 	get_lc_fname = get_gzipped_csv_lc_fname
@@ -35,14 +43,17 @@ def get_iteration_number():
 	while os.path.exists(get_classifier_fname(iteration)): iteration += 1
 	return iteration - 1
 
-def logprint(m):
-	if VERBOSE: print m
+def logprint(m, all_nodes=False):
+	if VERBOSE and all_nodes: print "node %d: %s "%(comm.rank, m)
+	elif VERBOSE and ROOT: print m
 
 def nancleaned(arr):
 	#print arr
 	return np.array([ a for a in arr if not np.isnan(a) ])
+
 def hat_fname(hid):
 	return "%s/%s-hatlc.csv.gz"%(data_dir, hid)
+
 def fit_out_linear_trend(t, x):
 	params, pcov = curve_fit(lambda t, y0, m : m*t + y0, t, x)
 	x -= params[0] + params[1]*t
@@ -50,22 +61,6 @@ def fit_out_linear_trend(t, x):
 		'slope' : params[1],
 		'mag0' : params[0]
 	}
-##############################################
-
-
-#def is_available(hid):
-#	fname = hat_fname(hid)
-#	if not os.path.exists(fname): return False
-#	try:
-#		lc = rhlc.read_hatlc(fname)
-#	except:
-#		return False
-#	if lc is None: return False
-#	return True
-#def get_n_random_available_hatids(n):
-#	inds = np.arange(0,len(available_hatids))
-#	np.random.shuffle(inds)
-#	return available_hatids[inds[:n]]
 
 
 def fetch_lcs(hatids, verbose=True):
@@ -94,26 +89,6 @@ def fetch_lcs(hatids, verbose=True):
 		os.system(unzip_command)
 		os.system("mv *hatlc*gz %s"%(data_dir))
 		i += j
-#def make_batch_dl_file(hatids):
-#	script = "#!/bin/bash\n mkdir gcvs_source_lcs\n"
-#	for hid in hatids:
-#		if hid not in phs13_list: continue
-#		script= "%s cp %s/%s gcvs_source_lcs/%s-hatlc.csv.gz\n"%(script, phs13_lcdir, phs13_list[hid]['relpath'], hid)
-#	script = "%s tar cvf gcvs_source_lcs.tar gcvs_source_lcs/*"%(script)
-#	with open("dlscript.sh",'w') as sfile:
-#		sfile.write(script)
-#def fetch_lc_from_phs13(hatid):
-#	if hatid in phs13_list:
-#		remote_fname = "%s/%s"%(phs13_lcdir, phs13_list[hatid]['relpath'])
-#		command = "scp -i ~/.ssh/id_dsa hat:%s %s/%s-hatlc.csv.gz"%(remote_fname, data_dir, hatid)
-#		os.system( command )
-#		return True
-#	else: return False
-#def fetch_lcs_from_phs13(hatids):
-#	for hid in hatids: fetch_lc_from_phs13(hid)
-
-
-#############################
 
 def get_t_x(lc, coltype='TF',selection='locally-brightest', ttype='BJD'):
 	t = []
@@ -299,84 +274,7 @@ def bootstrap_lsp(t, x, nboots, bootsize, independent_trials = True, data_range 
 	
 
 	return [ lsp.fasper(np.array(T), np.array(X), ofac, hifac, MACC) for T, X in zip(bst, bsx) ]
-def fast_lsp(t, x):
-	bslsp = bootstrap_lsp(t, x, n_boots, boot_size)
 
-	#Freqs,Power,nout,jmax,prob 
-	pers = [ l[0][::-1]**(-1) for l in bslsp ]
-	lsps = [ l[1][::-1] for l in bslsp ]
-
-
-	DT = get_dt(t)
-	min_p = min([ p[0] for p in pers ])
-	drange = int(min_p/(DT*ofac))
-
-	while True:
-		if drange < boot_size: drange = boot_size
-
-		bslsp_hf = bootstrap_lsp(t, x, n_boots, boot_size, data_range=drange)
-		
-		pers_hf = [ l[0][::-1]**(-1) for l in bslsp_hf ]
-		lsps_hf = [ l[1][::-1] for l in bslsp_hf ]
-
-		pers_new = []
-		lsps_new = []
-		for i in range(n_boots):
-
-			imax = len(pers_hf[i])-1
-			while pers_hf[i][imax] > min_p and imax > 0: imax -= 1
-			if imax <= 1: continue
-
-			all_pers = [ p for p in pers_hf[i][:imax+1] ]
-			all_lsps = [ l for l in lsps_hf[i][:imax+1] ]
-			all_pers.extend(pers[i])
-			all_lsps.extend(lsps[i])
-
-			pers[i] = np.array(all_pers)[:]
-			lsps[i] = np.array(all_lsps)[:]
-
-
-		if drange == boot_size: break
-
-		min_p = min([ p[0] for p in pers_hf ])
-		drange = int(min_p/(DT*ofac))
-
-	imin = min([ len(P) for P in pers ] )
-	#imax = max([ len(P) for P in pers ] )
-	#P0min = min([ P[0] for P in pers ])
-	#P0max = max([ P[0] for P in pers ])
-	#Pfmin = min([ P[-1] for P in pers ])
-	#Pfmax = max([ P[-1] for P in pers ])
-	#print P0min, P0max
-	#print Pfmin, Pfmax
-	#print imin, imax
-	def eat_away(arr, num):
-		if num == 0: return arr
-		return arr[num/2:len(arr) - int(ceil(float(num)/2.))]
-
-	#for p in pers:
-	#	num =  len(p) - imin
-
-	#	print num, p[:num/2 + 3], p[::-1][:num/2 + 3]
-	#	print eat_away(p, num)[:num/2 + 3], eat_away(p, num)[::-1][:num/2 + 3]
-	pers = [ eat_away(p, len(p) - imin) for p in pers ]
-	lsps = [ eat_away(l, len(l) - imin) for l in lsps ]
-
-	#imin = min([ len(P) for P in pers ] )
-	#imax = max([ len(P) for P in pers ] )
-	#lmin = min([ len(L) for L in lsps ] )
-	#lmax = max([ len(L) for L in lsps ] )
-	#print imin, lmin, imax, lmax
-
-
-	
-
-	P = [ np.mean([ p[i] for p in pers ]) for i in range(len(pers[0])) ]
-	L = [ np.mean([ l[i] for l in lsps ]) for i in range(len(pers[0])) ]
-
-	Lerr = [ np.std([ l[i] for l in lsps ]) for i in range(len(pers[0])) ]
-	#print len(P), len(L), len(Lerr)
-	return np.array(P), np.array(L), np.array(Lerr)
 def get_errs(x, DI=DELTA_I):
 	# Assign error values to magnitude measurements by 
 	# calculating the standard deviation of 10 nearby measurements
@@ -394,6 +292,7 @@ def get_errs(x, DI=DELTA_I):
 	for i in range(len(stds)):
 		if stds[i] == 0: stds[i] = np.median(stds)
 	return np.array(stds)
+
 def avg_subtracted(tpf, xpf, NBINS=NBINS):
 	I=0
 	tavgs, xavgs = [],[]
@@ -420,6 +319,7 @@ def avg_subtracted(tpf, xpf, NBINS=NBINS):
 			
 		else: return avgint(t)
 	return tpf, np.array([ x - avg_func(t) for t,x in zip(tpf, xpf) ])
+
 def bin_fixed_width(tpf, xpf, nbins=NBINS, mint=None, maxt=None):
 	if mint is None: mint = min(tpf)
 	if maxt is None: maxt = max(tpf)
@@ -443,6 +343,7 @@ def bin_fixed_width(tpf, xpf, nbins=NBINS, mint=None, maxt=None):
 		stds[i] = np.std(all_[i])
 	
 	return avgs, stds, nums
+
 def bin_phase_folded(t,x,stds,nbins=NBINS):
 	# If there's a gap in the phase, this binning function might need to be changed
 	nperbin = len(t)/nbins
@@ -474,6 +375,7 @@ def bin_phase_folded(t,x,stds,nbins=NBINS):
 		bstds.append(sqrt(sum([ s**2 for s in sel_stds ])/len(sel_stds)))
 		bmus.append(np.mean(sel_vals))
 	return np.array(bts), np.array(bmus), np.array(bstds)
+
 def get_binned_distro(t, x, nbins=8):
 	sorted_x = np.zeros(len(x))
 	sorted_x[:] = x[:]
@@ -498,6 +400,7 @@ def get_binned_distro(t, x, nbins=8):
 		I += dJ
 
 	return dev
+
 def beyond_nstd(t,x, n):
 	std = np.std(x)
 	mean = np.mean(x)
@@ -523,6 +426,7 @@ def fitting_function(*args):
 			W = (w + dwdt*(t - T/2))
 			val += args[A]*np.cos(n*W*t) + args[B]*np.sin(n*W*t)
 	return val
+
 def phase_fold(t,x,p,dp=DPHASE, dwdt=0.0):
 	#if dwdt == 0.: dpdt = 0.
 	#else: p = 2pi/w; w = 2pi/p dw = -2pi/p^2 dp
@@ -543,6 +447,7 @@ def phase_fold(t,x,p,dp=DPHASE, dwdt=0.0):
 			nparr[i]['x'] = x[i]
 	nparr.sort(order='tpf')
 	return nparr['tpf'], nparr['x']
+
 def symmetry_measure(t, x, p, nbins=NBINS):
 	tpf, xpf = phase_fold(t, x, p, dp=2.0)
 
@@ -555,6 +460,7 @@ def symmetry_measure(t, x, p, nbins=NBINS):
 		vals.append( (x1 - x2)**2/(e1**2/n1 + e2**2/n2) )
 	if len(vals) < 3: return None
 	else: return -sum(vals)/(len(vals) - 2)
+
 def GetModelLightcurve(t, ws, amps, phs, c):
 	arr = np.array([ A*np.cos(W*t - P) for A, W, P in zip(amps, ws, phs) ])
 	mod = np.zeros(len(arr))
@@ -827,139 +733,18 @@ def find_best_of_n_periods(t,x,pers,other_periods=[],fraction_of_smallest_stds_t
 		bst, bsx = bootstrapped_lc(t, x, nboots=NBOOTS, bootsize=min([ len(x)/NBOOTS, BOOTSIZE ]))
 		sses = []
 		for bt, bx in zip(bst, bsx):
-			#tpf, xpf = phase_fold(bt, bx, p)
-			#mpf = xpf - avg_subtracted(tpf, xpf)
-
-			#resid = avg_subtracted(tpf, xpf)
 			ws, amps, phs, c = fit_periods(bt, bx, tot_pers, use_dwdt=False)
 			
 			resid = get_resid(bt, bx, ws, amps, phs, c)
-			#resid = avg_subtracted(*phase_fold(bst, bsx, p))
-			sses.append(np.std(resid))
 			
-
+			sses.append(np.std(resid))
 		scores.append(np.mean(sses))
 		
-	
-	'''
-	best_p = pers[np.argsort(scores)[0]]
-	f = plt.figure()
-	ax = f.add_subplot(111)
-	ax.axhline(np.sort(scores)[0], color='r')
-	ax.set_title(str(best_p))
-	ax.axvline(best_p, color='r')
-	ax.plot(np.sort(pers), [ scores[i] for i in np.argsort(pers) ])
-	#plt.show()
-	
-	f2 = plt.figure()
-	
-
-	pers_sorted = np.array(pers)[np.argsort(scores)]
-	
-	Nplt = 5
-
-	for i in range(Nplt):
-		plt_fit = (Nplt, 2, 2*i + 1)
-		plt_res = (Nplt, 2, 2*i + 2)
-
-		ax_fit = f2.add_subplot(*plt_fit)
-		ax_res = f2.add_subplot(*plt_res)
-		p = pers_sorted[i]
-
-		bst, bsx = bootstrapped_lc(t, x, nboots=1, bootsize=boot_size)
-
-		bst = bst[0]
-		bsx = bsx[0]
-
-		ws, amps, phs, c = fit_periods(bst, bsx, [ p ])
-		
-		resid = get_resid(bst, bsx, ws, amps, phs, c)
-
-		bstpf, bsxpf = phase_fold(bst, bsx, p)
-		trpf, rpf = phase_fold(bst, resid, p)
-
-		ax_fit.scatter(bstpf, bsxpf, color='b', marker=',', alpha=0.1)
-		ax_res.scatter(trpf, rpf, color='b', marker=',', alpha=0.1)
-		ax_res.set_title("P=%.3f, score=%.3f"%(p, np.sort(scores)[i]))
-		ax_res.invert_yaxis()
-		ax_fit.invert_yaxis()
-		ax_res.set_xlim(0,1)
-		ax_fit.set_xlim(0,1)
-
-	f2.tight_layout()
-	
-	plt.show()
-	'''
-	#plt.show()
-
-
 	pers_sorted = np.array(pers)[np.argsort(scores)]
 	bp = pers_sorted[0]
-	#print bp
-	#if symmetry_measure(t, x, bp) < symmetry_measure(t, x, 2*bp): return [ bp ], []
-	#else: return [ 2*bp ], []
+	
 	return [ bp ], []
-	#return pers_sorted, np.sort(scores)
-#def eclipsing_binary_fitting_function(wt1, wb1, wt1, wb2, d1, d2, phoffset):
-def get_blazhko(t, x, p, nps=2):
-
-	sets = []
-	S = []
-	t0 = t[0]
-	for i in range(len(t)):
-		if len(S) == 0:
-			S.append([t[i], x[i]])
-			t0 = t[i]
-		elif t[i] - t0 > nps*p:
-			sets.append(S)
-			S = []
-		else:
-			S.append([t[i], x[i]])
-
-	As = []
-	tims = []
-	sig = np.std(x)
-	#minN = 100
-	for i,S in enumerate(sets):
-		ts = [ s[0] for s in S ]
-		xs = [ s[1] for s in S ]
-		#if len(ts) < minN: continue
-		
-		try:
-			ws, amps, phs, c = fit_periods(ts, xs, [ p ])
-		except:
-			continue
-		TS = np.linspace(i*nps*p, (i+1)*nps*p)
-		ms = - get_resid(TS, np.zeros(len(TS)), ws, amps, phs, c)
-		A = 0.5*(max(ms) - min(ms))
-		if A > 3*sig: continue
-		tims.append((i+0.5)*nps*p)
-		As.append(A)
-	tims = np.array(tims)
-	As = np.array(As)
-
-	#print len(tims), len(As)
-	wk1,wk2,nout,jmax,prob = lsp.fasper(tims, As, ofac, hifac, MACC)
-	LSPr = wk2[::-1]
-	P = wk1[::-1]**(-1)
-	p0 = 1./wk1[jmax]
-
-	tpf, spf = phase_fold(tims, As, p0)
-	f = plt.figure()
-	axs = f.add_subplot(121)
-	axs.scatter(tpf, spf, color='b', marker=',', alpha=0.1 )
-	axs.set_ylabel("scatter")
-	axs.set_xlabel("Phase")
-	axs.set_xlim(0,1)
-	axs.set_title("P=%0.4f (%.2f)"%(p0, (max(t) - min(t))/p0))
-
-	axlsp = f.add_subplot(122)
-	axlsp.plot(P, LSPr)
-	axlsp.set_xscale('log')
-	axlsp.set_ylabel("L-S Power")
-	axlsp.set_xlabel("P [days]")
-
-	plt.show()
+	
 
 def ZipAndMerge(x1, x2):
 	X = [ ]
@@ -1078,3 +863,136 @@ def load_full_tfalc(local_fname, keylist_dat, twomass_dat):
 	lc = add_2mass(lc, twomass_dat)
 	return lc
 
+def get_bagged_samples(Categories, size):
+	Samples = {}
+	for ID in Categories:
+		if not Categories[ID] in Samples: Samples[Categories[ID]] = [ ID ]
+		else: Samples[Categories[ID]].append(ID)
+
+	bags = []
+	for i in range(size):
+		bag = []
+		for cat in Samples:
+			di = int( 1./float(size) * len(Samples[cat]) )
+			i1, i2 = i*di, (i+1)*di
+			if i == size - 1:
+				bag.extend(Samples[cat][i1:])
+			else:
+				bag.extend(Samples[cat][i1:i2])
+		
+
+		np.random.shuffle(bag)
+		bags.append(bag)
+
+	return bags
+
+class BaggedModel:
+	def __init__(self, scalers=None, models=None, w=None):
+
+		# Assumes that either scalers is either None or a list with the same length as models
+		self.models = models
+		self.scalers = scalers
+		self.nclasses_ = None
+		self.clfrs_ = None
+
+		# weight the models equally by default
+		self.composite_prediction_ = lambda ModelPreds, Class : np.mean(ModelPreds)
+
+	def get_model_preds_(self, X):
+			
+		Ys = []
+		for s, m in zip(self.scalers, self.models):
+			if not s is None: Ys.append(m.predict_proba(s.transform(X)))
+			else: Ys.append(m.predict_proba(X))
+
+		Yp = []
+
+		nclasses = len(Ys[0][0])
+		if not self.nclasses_ is None: assert(nclasses==self.nclasses_)
+		else: self.nclasses_ = nclasses
+
+		for i in range(len(X)):
+			Yp.append([ [ Ys[j][i][k] for k in range(nclasses) ] for j in range(len(self.models)) ])
+
+		return Yp
+
+	def predict_proba(self, X):
+		
+		Ys = self.get_model_preds_(X)
+	
+		Y = [ ]
+		for i in range(len(X)):
+			Y.append([ self.composite_prediction_(np.ravel(Ys[i]), k) for k in range(self.nclasses_) ])
+		return Y
+
+	def fit(self, X, Y):
+		
+		ModelPredictions = self.get_model_preds_(X)
+
+		mpreds = []
+		for i in range(len(X)):
+			mpreds.append( np.ravel(ModelPredictions[i]) )
+			
+		self.clfrs_ = [ SVC(**svm_params) for i in range(self.nclasses_) ]
+		for Label in range(self.nclasses_):
+			y = [ 1 if yval == Label else 0 for i,yval in enumerate(Y) ]
+			self.clfrs_[Label].fit(mpreds, y)
+
+		#print self.clfrs_[0].predict_proba(mpreds[0])
+		self.composite_prediction_ = lambda ModelPreds, Class : \
+			self.clfrs_[Class].predict_proba(ModelPreds)[0][1] \
+					/ sum( [ clfr.predict_proba(ModelPreds)[0][1] for clfr in self.clfrs_ ] )
+
+	def save(self, root_name):
+		filenames = []
+		if not self.models is None:
+			# Save scalers and models
+			for i, m in enumerate(self.models):
+				if not self.scalers is None: s = self.scalers[i]
+				else: s = None
+
+				fname = "%s_ms%d.pkl"%(root_name,i)
+				pickle.dump((s, m), open(fname, 'wb') )
+				filenames.append(fname)
+			bagged_model_fname = "%s.pkl"%(root_name)
+			
+			# Save additional classifiers if there are any
+			if not self.clfrs_ is None:
+				bagged_model_clfrs_fname = "%s_clfrs.pkl"%(root_name)
+				clfr_fnames = []
+				for clfr in self.clfrs_:
+					fname = "%s_clfr%d.pkl"%(root_name,i)
+					pickle.dump(clfr, open(fname, 'wb'))
+					clfr_fnames.append(fname)
+				pickle.dump(clfr_fnames, bagged_model_clfrs_fname)
+
+			pickle.dump(filenames, open(bagged_model_fname, 'wb'))
+
+		else:
+			raise Exception("Can't save an empty BaggedModel (models == None)")
+		return True
+
+	def load(self, root_name):
+		bagged_model_fname = "%s.pkl"%(root_name)
+		bagged_model_clfrs_fname = "%s_clfrs.pkl"%(root_name)
+
+		filenames = pickle.load(open(bagged_model_fname, 'rb'))
+		self.scalers = []
+		self.models = []
+		
+		# Load scalers and models
+		for f in filenames:
+			s, m = pickle.load(open(f, 'rb'))
+			self.scalers.append(s)
+			self.models.append(m)
+
+		# if there are also additional classifiers, load them too!
+		if os.path.exists(bagged_model_clfrs_fname):
+			clfr_fnames = pickle.load(bagged_model_clfrs_fname)
+			self.clfrs_ = [ pickle.load(fname) for fname in clfr_fnames ]
+			self.nclasses_ = len(self.clfrs_)
+			self.composite_prediction_ = lambda ModelPreds, Class : \
+											self.clfrs_[Class].predict_proba(ModelPreds)[0][1] \
+											/ sum( [ clfr.predict_proba(ModelPreds)[0][1] for clfr in self.clfrs_ ] )
+
+		return True

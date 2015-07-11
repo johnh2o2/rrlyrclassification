@@ -85,7 +85,7 @@ overwrite = False
 COL_TYPE = 'TF'
 COL_SELECTION = 'locally-brightest'
 
-nharmonics = 8
+nharmonics = 6
 npers      = 1
 
 NPEAKS_TO_SAVE = 5
@@ -159,7 +159,8 @@ get_scores_fname = lambda HATID, iteration  : "%s/%s-%s.scores"%(LCCACHE, HATID,
 
 get_labeled_hatids_fname = lambda : "%s/labeled_hatids.dat"%(model_output_dir)
 get_mystery_hatids_fname = lambda iteration : "%s/uncertain_labels_iter%d.dat"%(model_output_dir, iteration)
-get_classifier_fname = lambda iteration : "%s/classifier_iter%04d.pkl"%(model_output_dir, iteration)
+#get_classifier_fname = lambda iteration : "%s/classifier_iter%04d.pkl"%(model_output_dir, iteration)
+get_classifier_fname = lambda iteration : "%s/bagged_comp_clfr_iter%04d"%(model_output_dir, iteration)
 get_keylist_dir = lambda field : "/home/jhoffman/2007_hatnet_phot/G%s/BASE"%(field)
 get_local_keylist_dir = lambda : model_dir
 get_local_keylist_fname = lambda field : "%s/keylist_field%s.txt"%(get_local_keylist_dir(), field)
