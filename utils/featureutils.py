@@ -273,7 +273,8 @@ def AddCustomFeatures(features):
 		new_features[ID] = AddCustomFeature(features[ID])
 	return new_features
 def LoadFeatures(ID):
-	logprint("  featureutils (LoadFeatures): loading features for hatid: %s"%(ID))
+	#print "IN LOAD FEATURES", comm.size, comm.rank
+	logprint("  featureutils (LoadFeatures): loading features for hatid: %s"%(ID), all_nodes=True)
 
 	feat_fname = hat_features_fname(ID, model_prefix)
 	if os.path.exists(feat_fname) and not overwrite:
@@ -356,14 +357,21 @@ def get_mc_fit_features(features, pcov_file, N=100 ):
 
 def score_features(features, pcov_file, iteration=0, N=5000, kind="other"):
 
-	mag_scaler, mag_model, other_scaler, other_model, \
+	#mag_scaler, mag_model, other_scaler, other_model, \
+	other_rootname, mag_rootname,\
 	skip_features, mag_features, vartypes_to_classify, \
 	other_keylist, mag_keylist = pickle.load(open(get_classifier_fname(iteration), 'rb'))
 
-	scalers = { 'mag' : mag_scaler, 'other' : other_scaler}
-	models  = { 'mag' : mag_model, 'other' : other_model}
+
+
+	#scalers = { 'mag' : mag_scaler, 'other' : other_scaler}
+	models  = { 'mag' : BaggedModel(), 'other' : BaggedModel()}
+	
+	models['mag'].load(mag_rootname)
+	models['other'].load(other_rootname)
+
 	observs = { 'mag' : None, 'other' : None}
-	scaler  =   scalers[kind]
+	#scaler  =   scalers[kind]
 	model   =   models[kind]
 
 	feats = get_mc_fit_features(features,pcov_file,N=N)
@@ -376,8 +384,8 @@ def score_features(features, pcov_file, iteration=0, N=5000, kind="other"):
 
 	observations = make_obs(observs[kind], keylist=other_keylist)
 
-	if not scaler is None:
-		observations = scaler.transform(observations)
+	#if not scaler is None:
+	#	observations = scaler.transform(observations)
 	scores = model.predict_proba(observations)
 
 	return np.array([ s[1] for s in scores ])

@@ -28,6 +28,7 @@ size = comm.Get_size()
 rank = comm.Get_rank()
 
 logprint(" get_candidates: MPI: rank = %d size = %d"%(rank, size))
+
 # What iteration are we on?
 iteration = get_iteration_number()
 
@@ -41,7 +42,7 @@ logprint("               : done.")
 #ssh_hostname = 'phn1' # Specified in settings.py
 dest_path = LCCACHE
 
-'''
+
 # load parameters to setup ssh connection
 logprint(" get_candidates: setting up ssh connection...")
 config = SSHConfig()
@@ -109,7 +110,9 @@ assert(len(np.unique(available_hatids)) == len(available_hatids)) # Make sure th
 
 # Load classifier
 logprint(" get_candidates: Loading classifier: %s"%(get_classifier_fname(iteration)))
-classifier = pickle.load(open(get_classifier_fname(iteration), 'rb'))
+classifier = BaggedModel()
+classifier.load(get_classifier_fname(iteration))
+#classifier = pickle.load(open(get_classifier_fname(iteration), 'rb'))
 
 bad_ids = []
 
@@ -161,9 +164,8 @@ if rank == 0:
 
 	pickle.dump(keylist, open("%s-dict.pkl"%(get_local_keylist_fname(field_to_analyze)), 'wb'))
 	pickle.dump(twomass_dict, open("%s-dict.pkl"%(get_local_2mass_fname(field_to_analyze)), 'wb'))
-'''
 
-available_hatids = [ "HAT-173-0000034", "HAT-173-0000016", "HAT-173-0000037" ]
+#available_hatids = [ "HAT-173-0000034", "HAT-173-0000016", "HAT-173-0000037" ]
 
 ####
 keylist = pickle.load(open("%s-dict.pkl"%(get_local_keylist_fname(field_to_analyze)), 'rb'))
