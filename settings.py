@@ -5,7 +5,7 @@ from sklearn.lda import LDA
 from sklearn.qda import QDA
 import numpy as np
 
-RUNNING_ON_DELLA = False
+RUNNING_ON_DELLA = True
 model_prefix = "rrab_v0"
 field_to_analyze = '219'
 min_score = 0.05
@@ -16,6 +16,8 @@ VERBOSE = True
 if RUNNING_ON_DELLA:
 	parent_dir = '/home/jah5/rrlyr_search/rrlyrclassification'
 	SCRATCH = "/tigress/jah5/rrlyr_scratch"
+	#NFILES_MAX = 100
+	NFILES_MAX = None
 else:
 	parent_dir = '/Users/jah5/Documents/Fall2014_Gaspar/rrlyr_classification'
 	#SCRATCH = '%s'%(parent_dir)
