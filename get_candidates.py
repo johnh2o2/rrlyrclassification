@@ -41,6 +41,7 @@ logprint("               : done.")
 # specify hostname to connect to and the remote/local paths
 #ssh_hostname = 'phn1' # Specified in settings.py
 dest_path = LCCACHE
+if not os.path.isdir(dest_path): os.makedirs(dest_path)
 
 
 # load parameters to setup ssh connection
@@ -94,7 +95,7 @@ with closing(SSHClient()) as ssh:
         # ideally this should be a master-slave type workload distribution, but we'll do
         # the naive equal-sized chunk thing for now (to save some coding time)
         # files = comm.scatter()
-        files = [ all_files[i] for i in range(rank*nfiles_per_core, min(len(all_files), (rank+1)*nfiles_per_core)) ]
+        files = [ all_files[i] for i in range(rank*nfiles_per_core, min([len(all_files), (rank+1)*nfiles_per_core])) ]
 
         logprint(" get_candidates: len(files) = %d"%(len(files)))
         for filename in files:
@@ -102,7 +103,7 @@ with closing(SSHClient()) as ssh:
     		hatid, junk = filename.split('.')
 
     		available_hatids.append(hatid)
-        	sftp.get(filename, filename)
+        	sftp.get(filename, "%s/%s"%(dest_path,filename))
 
 logprint(" get_candidates: %d == %d?"%(len(np.unique(available_hatids)), len(available_hatids)))
 
