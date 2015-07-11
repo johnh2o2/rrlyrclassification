@@ -41,7 +41,9 @@ logprint("               : done.")
 # specify hostname to connect to and the remote/local paths
 #ssh_hostname = 'phn1' # Specified in settings.py
 dest_path = LCCACHE
-if not os.path.isdir(dest_path): os.makedirs(dest_path)
+if not os.path.isdir(dest_path): 
+	logprint("%s is not a dir. Making it one."%(dest_path),all_nodes=True)
+	os.makedirs(dest_path)
 
 
 # load parameters to setup ssh connection
