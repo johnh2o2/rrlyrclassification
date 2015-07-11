@@ -858,7 +858,7 @@ def load_tfalc(local_fname):
 	return lc
 
 def load_full_tfalc(local_fname, keylist_dat, twomass_dat):
-	lc = load_tfalc
+	lc = load_tfalc(local_fname)
 	lc = add_keylist_data(lc, keylist_dat)
 	lc = add_2mass(lc, twomass_dat)
 	return lc
