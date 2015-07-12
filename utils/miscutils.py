@@ -86,7 +86,7 @@ def fetch_lcs(hatids, verbose=True):
 		fetch_command = "curl -J -O '%s'"%(url)
 		unzip_command = "unzip *zip; rm *zip"
 		os.system(fetch_command)
-		os.system(unzip_command)
+		if len(filtered_grp) > 5: os.system(unzip_command)
 		os.system("mv *hatlc*gz %s"%(data_dir))
 		i += j
 

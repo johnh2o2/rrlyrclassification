@@ -37,7 +37,7 @@ logprint("Loading labeled HATIDs")
 hatids, categories = LoadLabeledHatIDs()
 
 # Get the necessary lightcurves
-if iteration == 0:
+if iteration == 0 and ROOT:
 	if not os.path.isdir(data_dir): os.makedirs(data_dir)
 
 	# We're using the online server for this one...
@@ -49,9 +49,13 @@ if iteration == 0:
 	missing_hatids = []
 	for ID in hatids:
 		if not os.path.exists(get_lc_fname(ID)): missing_hatids.append(ID)
-
+	missing_hatids = np.array(missing_hatids)
+	
 	# Download them.
-	if len(missing_hatids) > 0: fetch_lcs(missing_hatids)
+	msl.master(missing_hatids)
+
+if iteration == 0 and not ROOT:
+	msl.slave(fetch_lcs)
 
 # Now distribute the workload to load/make the features...
 batch_size = 10
