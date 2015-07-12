@@ -70,7 +70,7 @@ num_iterations = 5
 btprs_other, btprs_mag, btprs_comp = [], [], []
 bfprs_other, bfprs_mag, bfprs_comp = [], [], []
 
-
+# Instead of splitting the magnitude and other features into two models, look at 
 def MakeCompositeModelFromScratch(xtrain, ytrain, CLFR=lambda : RandomForestClassifier(**rfc_params)):
 	clfr = CLFR()
 	clfr.fit(xtrain, ytrain)
@@ -83,6 +83,7 @@ def MakeCompositeModelFromProbs(xtrain1, xtrain2, ytrain, CLFR=LDA):
 	X = scaler.transform(X)
 	clfr.fit(X, ytrain)
 	return scaler, clfr
+
 if ROOT:
 	if size > 1:
 		

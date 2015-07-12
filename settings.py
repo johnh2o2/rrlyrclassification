@@ -155,6 +155,8 @@ get_pcov_file    = lambda HATID  : "%s/%s.pcov"%(LCCACHE, HATID )
 get_model_name = lambda iteration : "%s_iter%04d"%(model_prefix, iteration)
 get_scores_fname = lambda HATID, iteration  : "%s/%s-%s.scores"%(LCCACHE, HATID, get_model_name(iteration))
 
+get_hatids_in_field_fname = lambda field : "%s/hatids_in_field_%s.list"%(data_dir, field)
+
 get_labeled_hatids_fname = lambda : "%s/labeled_hatids.dat"%(model_output_dir)
 get_mystery_hatids_fname = lambda iteration : "%s/uncertain_labels_iter%d.dat"%(model_output_dir, iteration)
 #get_classifier_fname = lambda iteration : "%s/classifier_iter%04d.pkl"%(model_output_dir, iteration)
