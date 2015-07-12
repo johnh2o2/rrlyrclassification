@@ -36,8 +36,22 @@ logprint("Updating model; iteration %d"%(iteration))
 logprint("Loading labeled HATIDs")
 hatids, categories = LoadLabeledHatIDs()
 
-#hatids = hatids[:100]
-#categories = { ID : categories[ID] for ID in hatids }
+# Get the necessary lightcurves
+if iteration == 0:
+	if not os.path.isdir(data_dir): os.makedirs(data_dir)
+
+	# We're using the online server for this one...
+	# slow, but we don't yet have the infrastructure to get an arbitrary hatid...
+	get_lc_fname = get_gzipped_csv_lc_fname
+	load_lightcurve = lambda hatid : rhlc.read_hatlc(get_lc_fname(hatid))
+
+	# Find missing ID's
+	missing_hatids = []
+	for ID in hatids:
+		if not os.path.exists(get_lc_fname(ID)): missing_hatids.append(ID)
+
+	# Download them.
+	if len(missing_hatids) > 0: fetch_lcs(missing_hatids)
 
 # Now distribute the workload to load/make the features...
 batch_size = 10
