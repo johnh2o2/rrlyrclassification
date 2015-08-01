@@ -58,7 +58,6 @@ MYSQL_PASS_HSCAND = CONF.get('mysql','hscand_password')
 MYSQL_DATA_HSCAND = CONF.get('mysql','hscand_database')
 MYSQL_HOST_HSCAND = CONF.get('mysql','hscand_host')
 
-
 # HOST CONFIG for the HATSouth lightcurve fetching functions
 HSLC_HOST = CONF.get('hosts','hatsouth_lcs')
 HSLC_HOST = HSLC_HOST.split(',')
@@ -76,6 +75,8 @@ FALLBACK_HN_LCPATH = '/nfs/phn11/ar1/H/BIGPROJ/hatuser/2007_hatnet_phot'
 ##########################
 
 TEXTLC_OUTPUT_COLUMNS = {
+    'HAT':['hat id of source',
+            '%s', '15A', str ],
     'BJD':['time in Baryocentric Julian Date',
            '%20.7f','D',float],
     'MJD':['time in Modified Julian Date',
@@ -899,18 +900,18 @@ J = {jmag:.2f}, H = {hmag:.2f}, K = {kmag:.2f}
 
 
 #                           lat      lon     alt
-HAT_LOCATIONS = {'HN':{5:[31.6811,-110.8783,2320.0],
-                       6:[31.6811,-110.8783,2320.0],
-                       7:[31.6811,-110.8783,2320.0],
-                       8:[19.8244,-155.4733,4160.0],
-                       9:[19.8244,-155.4733,4160.0],
-                       10:[31.6811,-110.8783,2320.0],
-                       11:[30.59583,34.76333,875.0], # WISE HAT
-                       12:[31.6811,-110.8783,2320.0]},
-                 'HS':{1:[-29.0146,-70.6926,2282.0],
-                       2:[-29.0146,-70.6926,2282.0],
-                       3:[-23.2716,16.5,1800.0],
-                       4:[-23.2716,16.5,1800.0],
+HAT_LOCATIONS = {'HN':{5:[31.6811 ,-110.8783,2320.0],
+                       6:[31.6811 ,-110.8783,2320.0],
+                       7:[31.6811 ,-110.8783,2320.0],
+                       8:[19.8244 ,-155.4733,4160.0],
+                       9:[19.8244 ,-155.4733,4160.0],
+                      10:[31.6811 ,-110.8783,2320.0],
+                      11:[30.59583, 34.76333,875.0], # WISE HAT
+                      12:[31.6811 ,-110.8783,2320.0]},
+                 'HS':{1:[-29.0146,-70.6926 ,2282.0],
+                       2:[-29.0146,-70.6926 ,2282.0],
+                       3:[-23.2716,16.5     ,1800.0],
+                       4:[-23.2716,16.5     ,1800.0],
                        5:[-31.273333,149.064444,1149.0],
                        6:[-31.273333,149.064444,1149.0]}
                  }

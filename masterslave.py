@@ -25,13 +25,17 @@ def master(wi):
     current_work = Work(wi) 
     comm = MPI.COMM_WORLD
     status = MPI.Status()
+
+    #print current_work.work_items
     
     for i in range(1, size):
+        #print i
         anext = current_work.get_next_item() 
         if not anext: break
         comm.send(obj=anext, dest=i, tag=WORKTAG)
  
     while 1:
+        #print "AH"
         anext = current_work.get_next_item()
         if not anext: break
         data = comm.recv(obj=None, source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)

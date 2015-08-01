@@ -19,12 +19,13 @@ import utils.readhatlc as rhlc
 from settings import *
 import cPickle as pickle
 from mpi4py import MPI
+import make_catalog_of_hatids as mch
 
 fit_model_weights = True
 
 # Get rank and size of mpi process
 comm = MPI.COMM_WORLD
-size = comm.Get_size()
+nprocs = comm.Get_size()
 rank = comm.Get_rank()
 ROOT = (rank == 0)
 
@@ -36,26 +37,6 @@ logprint("Updating model; iteration %d"%(iteration))
 logprint("Loading labeled HATIDs")
 hatids, categories = LoadLabeledHatIDs()
 
-# Get the necessary lightcurves
-if iteration == 0 and ROOT:
-	if not os.path.isdir(data_dir): os.makedirs(data_dir)
-
-	# We're using the online server for this one...
-	# slow, but we don't yet have the infrastructure to get an arbitrary hatid...
-	get_lc_fname = get_gzipped_csv_lc_fname
-	load_lightcurve = lambda hatid : rhlc.read_hatlc(get_lc_fname(hatid))
-
-	# Find missing ID's
-	missing_hatids = []
-	for ID in hatids:
-		if not os.path.exists(get_lc_fname(ID)): missing_hatids.append(ID)
-	missing_hatids = np.array(missing_hatids)
-	
-	# Download them.
-	msl.master(missing_hatids)
-
-if iteration == 0 and not ROOT:
-	msl.slave(fetch_lcs)
 
 # Now distribute the workload to load/make the features...
 batch_size = 10
@@ -64,7 +45,7 @@ if len(work_packets[-1]) == 0: work_packets.pop()
 
 # Master/slave workload distribution
 logprint("Getting features!")
-num_bags = size
+num_bags = nprocs
 num_iterations = 5
 
 btprs_other, btprs_mag, btprs_comp = [], [], []
@@ -85,7 +66,7 @@ def MakeCompositeModelFromProbs(xtrain1, xtrain2, ytrain, CLFR=LDA):
 	return scaler, clfr
 
 if ROOT:
-	if size > 1:
+	if nprocs > 1:
 		
 		all_ft = msl.master(work_packets)
 		
@@ -248,7 +229,7 @@ AUC (Other) = %.3f +/- %.3f\n\t\
 AUC (Both)  = %.3f +/- %.3f\n\t\
 %d False negatives (RR Lyrae with P(RRLyr) < %.2f)\n\t\
 %d False positives (non RR with P(RR) > %.2f)\
-	"%(rank+1,size, 
+	"%(rank+1,nprocs, 
 		np.mean(aucs_mag), np.std(aucs_mag), 
 		np.mean(aucs_other), np.std(aucs_other), 
 		np.mean(aucs_comp), np.std(aucs_comp),

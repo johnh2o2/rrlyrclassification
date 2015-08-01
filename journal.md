@@ -35,3 +35,8 @@
 		* This was caused by an empty sublist in the `work_packets` list.
 	* Need to extend pickle for I/O
 	* 
+
+#July 27, 2015
+
+* Making `create_initial_labeled_hatids.py` download the lightcurves. In order to do this, we need a function that *generates* keylist/twomass files.
+* t-SNE **LOOK AT THIS!!!** https://www.youtube.com/watch?v=RJVL80Gg3lA&list=UUtXKDgv1AVoG88PLl8nGXmw
