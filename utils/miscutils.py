@@ -5,6 +5,7 @@ from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
 from scipy.stats import zscore as ZSCORE
 from fastperiod import specwindow, lombscargle
+from paramiko import SSHConfig, SSHClient
 from sklearn.lda import LDA
 from lcutils.lcutils_config import *
 from settings import *
@@ -14,6 +15,7 @@ from os.path import exists
 import cPickle as pickle
 import readhatlc as rhlc
 from mpi4py import MPI
+import masterslave as msl
 
 comm = MPI.COMM_WORLD
 size = comm.Get_size()
@@ -32,10 +34,40 @@ if not RUNNING_ON_DELLA:
 	load_lightcurve = lambda hatid : rhlc.read_hatlc(get_lc_fname(hatid))
 
 else:
-	get_lc_fname = get_raw_lc_fname
-	load_lightcurve = lambda hatid : load_full_tfalc(get_lc_fname(hatid), 
-														get_local_keylist_fname(field_to_analyze), 
-														get_local_2mass_fname(field_to_analyze))
+	get_lc_fname = get_raw_lc_fnamer
+	load_lightcurve = load_full_tfalc_from_scratch
+
+def logprint(m, all_nodes=False):
+	if VERBOSE and all_nodes: print "node %d: %s "%(comm.rank, m)
+	elif VERBOSE and ROOT: print m
+
+field_info = pickle.load(open('field_info2.pkl', 'rb'))
+all_fields = [ F for F in field_info ]
+
+hatid_field_list_fname = "%s/hatid_field_list.pkl"%(LCCACHE)
+hatid_field_list = {}
+def get_hatid_field_list():
+	logprint("Getting hatid field list!", all_nodes=True)
+	for field in all_fields:
+		fname = get_hatids_in_field_fname(field)
+		if not os.path.exists(fname):
+			logprint("List of HATID's for field %s does not yet exist. Making one!"%(field), all_nodes=True)
+			res = make_hatid_list(field)
+			if res is None: 
+				logprint("Oh wait, we don't know where that field is on the system yet!", all_nodes=True)
+				continue
+		hatids = pickle.load(open(fname, 'rb'))
+		if hatids is None: continue
+
+		for hatid in hatids:
+			hatid_field_list[hatid] = field
+	pickle.dump(hatid_field_list, open(hatid_field_list_fname, 'wb'))
+
+if not os.path.exists(hatid_field_list_fname):
+	get_hatid_field_list()
+
+hatid_field_list = pickle.load(open(hatid_field_list_fname, 'rb'))
+
 
 
 def get_iteration_number():
@@ -43,17 +75,11 @@ def get_iteration_number():
 	while os.path.exists(get_classifier_fname(iteration)): iteration += 1
 	return iteration - 1
 
-def logprint(m, all_nodes=False):
-	if VERBOSE and all_nodes: print "node %d: %s "%(comm.rank, m)
-	elif VERBOSE and ROOT: print m
-
 def nancleaned(arr):
 	#print arr
 	return np.array([ a for a in arr if not np.isnan(a) ])
-
 def hat_fname(hid):
 	return "%s/%s-hatlc.csv.gz"%(data_dir, hid)
-
 def fit_out_linear_trend(t, x):
 	params, pcov = curve_fit(lambda t, y0, m : m*t + y0, t, x)
 	x -= params[0] + params[1]*t
@@ -61,8 +87,6 @@ def fit_out_linear_trend(t, x):
 		'slope' : params[1],
 		'mag0' : params[0]
 	}
-
-
 def fetch_lcs(hatids, verbose=True):
 	i = 0
 	lh = len(hatids)
@@ -89,7 +113,6 @@ def fetch_lcs(hatids, verbose=True):
 		if len(filtered_grp) > 5: os.system(unzip_command)
 		os.system("mv *hatlc*gz %s"%(data_dir))
 		i += j
-
 def get_t_x(lc, coltype='TF',selection='locally-brightest', ttype='BJD'):
 	t = []
 	x = []
@@ -148,8 +171,6 @@ def is_peak(powers, i, imin, imax, per, peak_pers):
     #for pper in peak_pers:
     #    if abs(per - pper)/pper < 0.01: return False
     return True
-
-
 def find_n_peaks(periods, powers, n_peaks, dn=7):
     peak_periods, peak_powers = [], []
     inds = np.argsort(powers)[::-1]
@@ -274,7 +295,6 @@ def bootstrap_lsp(t, x, nboots, bootsize, independent_trials = True, data_range 
 	
 
 	return [ lsp.fasper(np.array(T), np.array(X), ofac, hifac, MACC) for T, X in zip(bst, bsx) ]
-
 def get_errs(x, DI=DELTA_I):
 	# Assign error values to magnitude measurements by 
 	# calculating the standard deviation of 10 nearby measurements
@@ -292,7 +312,6 @@ def get_errs(x, DI=DELTA_I):
 	for i in range(len(stds)):
 		if stds[i] == 0: stds[i] = np.median(stds)
 	return np.array(stds)
-
 def avg_subtracted(tpf, xpf, NBINS=NBINS):
 	I=0
 	tavgs, xavgs = [],[]
@@ -319,7 +338,6 @@ def avg_subtracted(tpf, xpf, NBINS=NBINS):
 			
 		else: return avgint(t)
 	return tpf, np.array([ x - avg_func(t) for t,x in zip(tpf, xpf) ])
-
 def bin_fixed_width(tpf, xpf, nbins=NBINS, mint=None, maxt=None):
 	if mint is None: mint = min(tpf)
 	if maxt is None: maxt = max(tpf)
@@ -343,7 +361,6 @@ def bin_fixed_width(tpf, xpf, nbins=NBINS, mint=None, maxt=None):
 		stds[i] = np.std(all_[i])
 	
 	return avgs, stds, nums
-
 def bin_phase_folded(t,x,stds,nbins=NBINS):
 	# If there's a gap in the phase, this binning function might need to be changed
 	nperbin = len(t)/nbins
@@ -375,7 +392,6 @@ def bin_phase_folded(t,x,stds,nbins=NBINS):
 		bstds.append(sqrt(sum([ s**2 for s in sel_stds ])/len(sel_stds)))
 		bmus.append(np.mean(sel_vals))
 	return np.array(bts), np.array(bmus), np.array(bstds)
-
 def get_binned_distro(t, x, nbins=8):
 	sorted_x = np.zeros(len(x))
 	sorted_x[:] = x[:]
@@ -400,13 +416,11 @@ def get_binned_distro(t, x, nbins=8):
 		I += dJ
 
 	return dev
-
 def beyond_nstd(t,x, n):
 	std = np.std(x)
 	mean = np.mean(x)
 	return float(len([ X for X in x if abs(X - mean)/std > n ]))/float(len(x))
 #def analyze_frequency evolution
-
 def fitting_function(*args):
 	# Fits multiple periods!
 	t = args[0]
@@ -426,7 +440,6 @@ def fitting_function(*args):
 			W = (w + dwdt*(t - T/2))
 			val += args[A]*np.cos(n*W*t) + args[B]*np.sin(n*W*t)
 	return val
-
 def phase_fold(t,x,p,dp=DPHASE, dwdt=0.0):
 	#if dwdt == 0.: dpdt = 0.
 	#else: p = 2pi/w; w = 2pi/p dw = -2pi/p^2 dp
@@ -447,7 +460,6 @@ def phase_fold(t,x,p,dp=DPHASE, dwdt=0.0):
 			nparr[i]['x'] = x[i]
 	nparr.sort(order='tpf')
 	return nparr['tpf'], nparr['x']
-
 def symmetry_measure(t, x, p, nbins=NBINS):
 	tpf, xpf = phase_fold(t, x, p, dp=2.0)
 
@@ -460,7 +472,6 @@ def symmetry_measure(t, x, p, nbins=NBINS):
 		vals.append( (x1 - x2)**2/(e1**2/n1 + e2**2/n2) )
 	if len(vals) < 3: return None
 	else: return -sum(vals)/(len(vals) - 2)
-
 def GetModelLightcurve(t, ws, amps, phs, c):
 	arr = np.array([ A*np.cos(W*t - P) for A, W, P in zip(amps, ws, phs) ])
 	mod = np.zeros(len(arr))
@@ -482,7 +493,6 @@ def SplitFitParams( ws, amps, phs, c ):
 	C = [ c for i in range(npers) ] 
 
 	return WS, AMPS, PHS, C
-
 def translate_features_to_popt(features, use_dwdt=False):
 	popt = []
 	popt.append(features['constant_offset'])
@@ -526,7 +536,6 @@ def translate_popt_to_fit_params(popt, use_dwdt=False):
 		return amplitudes, phases, popt[0], popt[1]
 	else:
 		return amplitudes, phases, popt[0]
-	
 def translate_fit_params_to_features(amps,phs,c):
 	features = {}
 	features['constant_offset'] = c
@@ -539,12 +548,10 @@ def translate_fit_params_to_features(amps,phs,c):
 			features['p%dh%d_amplitude'%(i+1, j+1)] = AMPS[i][j]
 			features['p%dh%d_phase'%(i+1, j+1)] = PHS[i][j]
 	return features
-
 def translate_popt_to_features(popt, use_dwdt=False):
 	fpars = translate_popt_to_fit_params(popt, use_dwdt=use_dwdt)
 	#print fpars
 	return translate_fit_params_to_features(*fpars)
-
 def fit_periods(t,x,ps, use_dwdt=False, return_errors=False):
 	ws = [ 2*np.pi/float(p) for p in ps ]
 	frqs = [ ws[freq_no] * (harm_no + 1)
@@ -574,9 +581,6 @@ def fit_periods(t,x,ps, use_dwdt=False, return_errors=False):
 		return tuple([frqs]) + fit_pars + tuple([pcov])
 	else:
 		return tuple([frqs]) + fit_pars
-	
-	
-	
 def bs_fit_periods(t, x, ps, nsub=boot_size):
 	bst, bsx = bootstrapped_lc(t, x, nboots=1, bootsize=nsub)
 
@@ -744,8 +748,6 @@ def find_best_of_n_periods(t,x,pers,other_periods=[],fraction_of_smallest_stds_t
 	bp = pers_sorted[0]
 	
 	return [ bp ], []
-	
-
 def ZipAndMerge(x1, x2):
 	X = [ ]
 	assert(len(x1) == len(x2))
@@ -759,7 +761,6 @@ def ZipAndMerge(x1, x2):
 		x.extend(X2)
 		X.append(x)
 	return np.array(X)
-
 def make_obs(Feats, keylist=None):
 
 	Obs = []
@@ -773,24 +774,29 @@ def make_obs(Feats, keylist=None):
 				obs.append(Feats[F][k])
 		Obs.append(obs)
 	return np.array(Obs)
-def get_keylist(field, keylist_dir = keylist_dir, ssh_host_name=ssh_host_name):
+
+
+def make_keylist_dict(klist_data):
 	keylist = {}
-	local_fname = "keylist_field%s.txt"%(field)
-	os.system("scp %s:%s/keylist.txt %s"%(ssh_host_name, keylist_dir, local_fname))
-	klist_data = np.loadtxt(local_fname, dtype=keylist_dt)
 	for kl in klist_data:
 		keylist[kl['TSTF']] = { }
 		for k in keylist_dt.names:
 			if k == 'TSTF': continue
 			keylist[kl['TSTF']][k] = kl[k]
 	return keylist
+def get_keylist(field, ssh_host_name=ssh_host_name):
+	
+	local_fname = get_local_keylist_fname(field)
 
+	os.system("scp %s:%s/keylist.txt %s"%(ssh_host_name, get_keylist_dir(field), local_fname))
+	klist_data = np.loadtxt(local_fname, dtype=keylist_dt)
+	return make_keylist_dict(klist_data)
 def load_2mass(field, twomass_remote_dir='~', twomass_fname='colors_field%s.dat', ssh_host_name=ssh_host_name):
 	twomass_dict = {}
-	twomass_local_fname = twomass_fname%(field)
+
 	if not os.path.exists(twomass_local_fname):
-		os.system("scp %s:%s/%s %s"%(ssh_host_name, twomass_remote_dir, twomass_local_fname, twomass_local_fname))
-	twomass_data = np.loadtxt(twomass_local_fname, dtype=twomass_dt)
+		os.system("scp %s:%s %s"%(ssh_host_name, get_remote_2mass_fname(field), get_local_2mass_fname(field)))
+	twomass_data = np.loadtxt(get_local_2mass_fname(field), dtype=twomass_dt)
 	#print twomass_data['hatid']
 	for tm in twomass_data:
 		#print tm, tm['hatid']
@@ -814,8 +820,6 @@ def add_2mass(lc, tmdat):
 	lc['ndet'] = len(lc['TF1'])
 	
 
-	lc['cols'] = colnames
-
 	lc['twomassid'] = 0
 	lc['hatstations'] = np.unique(lc['STF'])
 	lc['filters'] = [ flt for flt in np.unique(lc['FLT']) ]
@@ -823,46 +827,499 @@ def add_2mass(lc, tmdat):
 def add_keylist_data(lc, kl):
 
 	cols = [ 'FLT', 'EXP', 'BJD' ]
+
+	# HATnorth sources have a slightly different format than HATsouth sources;
+	#  north TSTFC = <TSTF>_<CCD>
+	#  south TSTF  = <TSTF>
+
+	if 'HAT' in lc: 
+		is_hatnorth_source = True
+	else:
+		is_hatnorth_source = False
+		
+	# initialize
 	for col in cols:
 		lc[col] = []
 
+	missing_exposures = []
+	# For each measurement
 	for i in range(len(lc['TF1'])):
+
+		# Obtain CCD/exposure codes
+		if is_hatnorth_source:
+			EXP, CCD = lc['TSTFC'][i].split('_')
+		else:
+			EXP = lc['TSTF'][i]
+		not_available = (EXP not in kl)
+		if not_available: missing_exposures.append(EXP)
+			#logprint(" ERROR: exposure %s is not in the keylist!!"%(EXP), all_nodes=True)
+			
+		# Add info from keylist!
 		for col in cols:
-			lc[col].append(kl[lc['TSTF'][i]][col])
+			if not_available:
+				lc[col].append('?')
+			else:
+				lc[col].append(kl[EXP][col])
+	if len(missing_exposures) > 0: logprint("   add_keylist_data: %d out of %d exposures are missing from the keylist!!"%(len(missing_exposures), len(lc['TF1'])), all_nodes=True)
+	# Convert to numpy arrays
 	for col in cols:
 		lc[col] = np.array(lc[col])
+
 	return lc
 
-
+def get_colnames(local_fname):
+	with open(local_fname, 'r') as f:
+		for line in f:
+			if '#' in line: continue
+			val1 = line.split()[0]
+			if 'HAT' in val1: return HATLC_COL_DEFS['hs']['tfalc']
+			else: return HATLC_COL_DEFS['hn']['tfalc']
 def load_tfalc(local_fname):
 	lc = {}
+	colnames = get_colnames(local_fname)
 	for c in colnames: lc[c] = []
-	
+
 	with open(local_fname, 'r') as f:
 		for line in f:
 			data = line.split("#")
 			vals = data[0].split()
 			if len(vals) < len(colnames): continue
+
 			for i,c in enumerate(colnames):
-				lc[c].append(TEXTLC_OUTPUT_COLUMNS[c][3](vals[i]))
+				try:
+					lc[c].append(TEXTLC_OUTPUT_COLUMNS[c][3](vals[i]))
+				except ValueError, e:
+					raise Exception("{0} -- {1} not convertable... {2}".format(c, vals[i], local_fname))
+
 	for c in colnames: lc[c] = np.array(lc[c])
-	lc['STF'] = []
 	lc['frame'] = []
-	for tstf in lc['TSTF']:
-		station, frame = tstf.split('-')
-		lc['STF'].append(station)
-		lc['frame'].append(frame)
+	lc['STF'] = []
+	if 'HAT' in colnames:
+		lc['CCD'] = []
+		for tstf in lc['TSTFC']:
+			station, frameccd = tstf.split('-')
+			frame, ccd = frameccd.split('_')
+			lc['STF'].append(station)
+			lc['CCD'].append(ccd)
+			lc['frame'].append(frame)
+		lc['CCD'] = np.array([ int(CCD) for CCD in lc['CCD']])
+	else:
+		for tstf in lc['TSTF']:
+			station, frame = tstf.split('-')
+			lc['STF'].append(station)
+			lc['frame'].append(frame)
 
 	lc['frame'] = np.array([ int(f) for f in lc['frame']])
 	lc['STF'] = np.array([ int(stf) for stf in lc['STF']])
-	return lc
 
+	lc['cols'] = colnames
+	return lc
+def prune_out_bad_inds(lc):
+	bad_inds = []
+	for i,t in enumerate(lc['BJD']):
+		try:
+			T = float(t)
+		except:
+			bad_inds.append(i)
+
+	cols_to_prune = [ c for c in lc if hasattr(lc[c], '__iter__') and len(lc[c]) == len(lc['TF1']) ]
+	for c in cols_to_prune:
+		lc[c] = np.array([ lc[c][i] for i in range(len(lc['TF1'])) if not i in bad_inds ])
+
+	return lc
 def load_full_tfalc(local_fname, keylist_dat, twomass_dat):
 
 	lc = load_tfalc(local_fname)
 	lc = add_keylist_data(lc, keylist_dat)
 	lc = add_2mass(lc, twomass_dat)
 	return lc
+
+def get_remote_tfalc_fname(hatid, field = None):
+	if field is None:
+		field = get_field_of(hatid)
+		if field is None: return None
+	return "%s/%s.tfalc"%(field_info[field], hatid)
+
+def download_lc(hatid, sftp=None):
+	close_it = False
+	if sftp is None:
+		ssh, sftp = open_ssh_connection()
+		close_it = True
+
+
+	fname_r = get_remote_tfalc_fname(hatid)
+	if fname_r is None: 
+		logprint("                                   %s  !  fname is none!"%(hatid), all_nodes=True)
+		return False
+
+	fname_l = get_raw_lc_fname(hatid)
+
+	if not rexists(sftp, fname_r):
+		logprint("                                   %s  !  rexists returns false"%(hatid), all_nodes=True)
+		return False
+
+	sftp.get(fname_r, fname_l)
+	if close_it: close_ssh_connection(ssh, sftp)
+
+	return True
+def save_and_return(lc, hatid, save_full_lc):
+	# Save lightcurve
+	if save_full_lc: 
+		logprint("   ==> saving %s lc to %s"%(hatid, get_full_tfalc_fname(hatid)), all_nodes=True)
+		pickle.dump(lc, open(get_full_tfalc_fname(hatid), 'wb'))
+	return lc
+
+def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_dat=None, ssh=None, sftp=None, save_full_lc=True, min_observations=5):
+	logprint("  load_full_tfalc_from_scratch ** %s"%(hatid), all_nodes=True)
+
+	# Load full lightcurve if one is available
+	if os.path.exists(get_full_tfalc_fname(hatid)): 
+		logprint("    (loading) %s"%(hatid), all_nodes=True)
+		# There have been some problems loading the pickled lightcurves. This will regenerate a lightcurve if it's found to be broken.
+		try:
+			full_tfalc = pickle.load(open(get_full_tfalc_fname(hatid), 'rb'))
+			return full_tfalc
+		except:
+			logprint("               !                  %s  ! can't load %s"%(hatid, get_full_tfalc_fname(hatid)), all_nodes=True)
+
+
+
+	
+	# Deal with ssh connections.
+	close_it = False
+	if ssh is None or sftp is None:
+		logprint("                                  %s  >  opening ssh"%(hatid), all_nodes=True)
+		ssh, sftp = open_ssh_connection()
+		close_it = True
+
+	
+	if field is None:
+		logprint("                                  %s  >  getting field..."%(hatid), all_nodes=True)
+		field = get_field_of(hatid)
+
+	# Make sure lightcurve exists...
+	if not os.path.exists(get_raw_lc_fname(hatid)): 
+		logprint("                                  %s  >  downloading..."%(hatid), all_nodes=True)
+		stat = download_lc(hatid, sftp=sftp)
+		if not stat: 
+			logprint("                    !             %s  !  download had an error :( ..."%(hatid), all_nodes=True)
+			return save_and_return(None, hatid, save_full_lc)
+
+	# Deal with keylist data
+	if keylist_dat is None:
+		logprint("                                  %s  >  getting keylist data..."%(hatid), all_nodes=True)
+		keylist = load_keylist(field)
+		if keylist is None:
+			logprint("                    !             %s  !  KEYLIST is no good :("%(hatid), all_nodes=True)
+			
+			return save_and_return(None,hatid,  save_full_lc)
+
+	logprint("                                  %s  >  getting twomass data..."%(hatid), all_nodes=True)
+	# deal with 2mass data
+	twomass_dat = get_2mass_data_for_hatid(hatid, client=ssh)
+
+
+	# Close ssh connections if necessary
+	if close_it: 
+		logprint("                                  %s  >  closing ssh connection..."%(hatid), all_nodes=True)
+		close_ssh_connection(ssh, sftp)
+
+	# Get lightcurve
+	logprint("                                  %s  >  loading lc..."%(hatid), all_nodes=True)
+	lc = load_full_tfalc(get_raw_lc_fname(hatid), keylist, twomass_dat)
+	if lc is None: 
+		logprint("                    !             %s  !  lc was none!"%(hatid), all_nodes=True)
+		return save_and_return(None, hatid, save_full_lc)
+
+	logprint("                                  %s  >  pruning out bad inds..."%(hatid), all_nodes=True)
+	# Prune out missing keylist datapoints:
+	lc = prune_out_bad_inds(lc)
+
+	# Ignore this lightcurve if there are too few points
+	if len(lc['BJD']) < min_observations: 
+		logprint("                    !             %s  !  too few observations!!"%(hatid), all_nodes=True)
+		return save_and_return(None, hatid, save_full_lc)
+	
+	return save_and_return(lc, hatid, save_full_lc)
+def rexists(sftp, path):
+    """os.path.exists for paramiko's SCP object
+    """
+    try:
+        sftp.stat(path)
+    except IOError, e:
+        if e[0] == 2:
+            return False
+        raise
+    else:
+        return True
+def get_field_ids(field, sftp):
+	logprint(" getting hat ids in field %s"%(field), all_nodes=True)
+	remote_path = field_info[field]
+	if not rexists(sftp, remote_path):
+		logprint(" field %s is not where we think it is (%s)"%(field, remote_path), all_nodes=True)
+		return None
+
+	sftp.chdir(remote_path)
+	files = sftp.listdir()
+
+	field_ids = []
+	for f in files:
+		# Skip non-tfalc lightcurves
+		if not 'tfalc' in f: continue
+		# if more than 1 period in filename, skip.
+		if len(f.split('.')) > 2: continue
+		
+		field_ids.append(f.replace('.tfalc', ''))
+
+	return field_ids
+def print_list(l):
+	pstr = ""
+	for i,item in enumerate(l):
+		if i == len(l) - 1: pstr = "%s%s"%(pstr, item)
+		else: pstr = "%s%s,"%(pstr, item)
+
+	return pstr
+def get_field_of(hatid):
+	if not hatid in hatid_field_list: return None
+	
+	return hatid_field_list[hatid]
+
+	# exhaustive search. slower than it needs to be.
+	#for field in all_fields:
+	#	fname = get_hatids_in_field_fname(field)
+	#	if not os.path.exists(fname):
+	#		logprint("List of HATID's for field %s does not yet exist. Making one!"%(field), all_nodes=True)
+	#		res = make_hatid_list(field)
+	#		if res is None: 
+	#			logprint("Oh wait, we don't know where that field is on the system yet!", all_nodes=True)
+	#			return None
+	#	hatids = pickle.load(open(fname, 'rb'))
+	#	if hatids is None: continue
+	#	if hatid in hatids: return field
+	#return None
+def get_remote_tfalc_filename(hatid):
+	field = get_field_of(hatid)
+	if field is None: return None
+	return "%s/%s.tfalc"%(field_info[field], hatid)
+def safe_open_keylist(fname):
+	try:
+		keylist_data = np.loadtxt(fname, dtype = keylist_dt)
+		return keylist_data
+	except ValueError, e:
+		logprint(" WARNING: problem using loadtxt on keylist %s"%(fname), all_nodes=True)
+		try:
+			kl = open(fname, 'r')
+		except:
+			logprint(" %s problem summary: open() in 'r' mode does not work"%(fname), all_nodes=True)
+			return None
+
+
+		keys = []
+		for key, dt in keylist_dt_arr:
+			if 'unknown' in key: continue
+			keys.append((key, dt))
+
+		keylist_dict = {key : [] for key, dt in keys}
+
+		lno = 0
+		bad_inds = []
+		for line in kl:
+			if 'NULL' in line: 
+				bad_inds.append(lno)
+				lno+=1
+				continue
+
+			entries = line.split()
+			if len(entries) == len(keys):
+				for i in range(len(keys)):
+
+					if dt == float: entry = float(entries[i])
+					else: entry = entries[i]
+
+					keylist_dict[keys[i][0]].append(entry)
+			else:
+				bad_inds.append(lno)
+				lno+=1
+				continue
+			lno+=1
+
+		kl.close()
+		keylist_dat = np.empty(lno - len(bad_inds), dtype=keylist_dt)
+
+		for i in range(lno - len(bad_inds)):
+			for key in keylist_dict:
+				keylist_dat[i][key] = keylist_dict[key][i]
+		logprint(" %s: %d/%d lines are problematic"%(fname, len(bad_inds), lno), all_nodes=True)
+
+
+		return keylist_dat
+def load_keylist(field, sftp=None):
+
+	# ssh stuff
+	close_it = False
+	if sftp is None:
+		ssh, sftp = open_ssh_connection()
+		close_it = True
+	
+	klfname_r = "%s/keylist.txt"%(get_keylist_dir(field))
+	klfname_l = get_local_keylist_fname(field)
+
+	if not os.path.exists(klfname_l):
+		klfilesize = sftp.stat(klfname_r).st_size
+		logprint("               : remote keylist.txt filesize "+`klfilesize`)
+
+		if not rexists(sftp, klfname_r): raise Exception("Cannot find keylist %s for field %s on remote system."%(klfname_r, field))
+
+		sftp.get(klfname_r, klfname_l)
+	
+	keylist_data = safe_open_keylist(klfname_l)
+	keylist = make_keylist_dict(keylist_data)
+
+	if close_it: close_ssh_connection(ssh, sftp)
+
+	return keylist
+def make_hatid_list(field, sftp=None, ssh=None):
+	# Get list of hatids that are in this field
+	close_it = False
+	if sftp is None: 
+		close_it = True
+		ssh, sftp = open_ssh_connection()
+	
+	field_ids = get_field_ids(field, sftp)
+	fname = get_hatids_in_field_fname(field)
+	pickle.dump(field_ids, open(fname, 'wb'))
+
+	if close_it: close_ssh_connection(ssh, sftp)
+
+	return field_ids
+def make_hatid_lists(fields = None, sftp=None, ssh=None):
+	# SSH
+	close_it = False
+	if ( not ROOT or size == 1 ) and sftp is None:
+		ssh, sftp = open_ssh_connection()
+		close_it = True
+
+	# Get all missing fields if no list is specified
+	logprint("Making hatid lists")
+	if fields is None: 
+		logprint("Getting missing fields.")
+		fields = []
+		for field in all_fields:
+			fname = get_hatids_in_field_fname(field)
+			if not overwrite and os.path.exists(fname): continue
+			fields.append(field)
+		if len(fields) == 0: 
+			logprint("No fields are missing!")
+			return None
+		logprint("done!")
+
+	# Get list of field ids.
+	if size == 1:
+		# Serial
+		hatid_lists = {}
+		for field in fields:
+			hatid_lists[field] = make_hatid_list(field, sftp=sftp, ssh=ssh)
+		return hatid_lists
+
+	elif ROOT:
+		# Master/slave
+		all_field_ids = msl.master(fields)
+
+		# save information.
+		bad_fields = []
+		for field, ids in all_field_ids:
+			if ids is None: 
+				bad_fields.append(field)
+				
+			fname = get_hatids_in_field_fname(field)
+			pickle.dump(ids, open(fname, 'wb'))
+
+		logprint("%d out of %d fields (%d total fields) have invalid paths!"%(len(bad_fields), len(fields), len(all_fields)))
+		logprint(print_list(bad_fields))
+
+	else:
+		
+		msl.slave(lambda field : ( field, get_field_ids(field, sftp)))
+
+	if close_it: close_ssh_connection(ssh, sftp)
+	
+get_2mass_binary = lambda field : "/home/jhoffman/2massread"
+get_2mass_data_dir = lambda field : "/H/CAT/2MASS/2MASS_JH_AP/data"
+get_2mass_shell_script = lambda field : "/home/jhoffman/color-file.sh"
+
+def open_ssh_connection():
+	config = SSHConfig()
+	with open(os.path.expanduser('~/.ssh/config')) as config_file:
+	    config.parse(config_file)
+	d = config.lookup(ssh_host_name)
+
+	ssh = SSHClient()
+	ssh.load_system_host_keys() #NOTE: no AutoAddPolicy() 
+	ssh.connect(d['hostname'], username=d.get('user'))
+	sftp = ssh.open_sftp()
+
+	return ssh, sftp
+def close_ssh_connection(ssh, sftp):
+	if sftp: sftp.close()
+	if ssh: ssh.close()
+def conv(r, t):
+	if isinstance(t, str): return r
+	else: return t(r)
+def get_2mass_data_for_hatid(hatid, client, field=None):
+	if field is None:
+		field = get_field_of(hatid)
+
+	stdin, stdout, stderr = client.exec_command('%s --cat %s -g %s'%(get_2mass_binary(field), get_2mass_data_dir(field), hatid))
+
+	lines = []
+	for line in stdout:
+		lines.append(line.strip('\n'))
+	results = lines[1].split()
+	assert(len(results) == len(twomass_dt_arr))
+	RES = [ (results[i],) + twomass_dt_arr[i] for i in range(len(results)) ]
+	#print RES[0]
+	results_dict = { c : conv(r, t) for r, c, t in RES }
+	
+	return results_dict
+def make_2mass_data_for_field(field, client, sftp):
+
+	#if os.path.exists(get_local_2mass_fname(field)):
+	#	return np.loadtxt(get_local_2mass_fname(field))
+
+	fname = get_hatids_in_field_fname(field)
+	if not os.path.exists(fname):
+		logprint("List of HATID's for field %s does not yet exist. Making one!"%(field), all_nodes=True)
+		res = make_hatid_lists([ field ])
+		if res is None: 
+			logprint("Oh wait, we don't know where that field is on the system yet!", all_nodes=True)
+			return None
+	hatids = pickle.load(open(fname, 'rb'))
+	
+	results = np.empty(len(hatids), dtype=twomass_dt)
+	f = open(get_local_2mass_fname(field), 'w')
+	for i, hatid in enumerate(hatids):
+		print i, len(hatids), hatid
+		res = get_2mass_data_for_hatid(hatid, client, field=field)
+		for c in res:
+			results[i][c] = res[c]
+			f.write("{0} ".format(res[c]))
+		f.write("\n")
+		
+	f.close()
+
+	return np.array(results)
+def is_candidate(scores, min_score, min_frac_above_min_score):
+	nabove = sum([ 1 for s in scores if s > min_score ])
+	if float(nabove)/float(len(scores)) > min_frac_above_min_score: return True
+	return False
+def load_bad_ids(iteration):
+	BAD_IDS = []
+	for ID in bad_ids: BAD_IDS.append(ID)
+	if iteration == 1: return BAD_IDS
+	for i in range(1,iteration):
+		bad_ids_ = pickle.load(open(get_bad_ids_fname(i), 'rb'))
+		for ID in bad_ids_: BAD_IDS.append(ID)
+	return BAD_IDS
 
 def get_bagged_samples(Categories, size):
 	Samples = {}
@@ -886,7 +1343,6 @@ def get_bagged_samples(Categories, size):
 		bags.append(bag)
 
 	return bags
-
 class BaggedModel:
 	def __init__(self, scalers=None, models=None, w=None):
 

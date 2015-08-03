@@ -91,8 +91,6 @@ def GetCategoriesForEachHATID(cat):
 		categories[source['id']] = GCVS_GetVartypeNameToUse(source['vartype'])
 	return categories
 
-
-
 def GetGoodHATIDs(IDs, categs ):
 	good_ids = []
 	i=0
@@ -390,3 +388,45 @@ def score_features(features, pcov_file, iteration=0, N=5000, kind="other"):
 
 	return np.array([ s[1] for s in scores ])
 
+def test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score):
+	features = LoadFeatures(hatid)
+	
+	# If features is None, this is a bad ID
+	if features is None:
+		return None
+		
+	# Obtain MC scores
+	scores = score_features(features, pcov_file=get_pcov_file(hatid), iteration=iteration)
+
+	# Mark ID if it's a candidate
+	if is_candidate(scores, min_score, min_frac_above_min_score): 
+		return True
+
+	else: 
+		return False
+
+def generate_features(hatid,  field=None, keylist=None):
+	logprint("  generate_features -- %s"%(hatid), all_nodes=True)
+	# Skip if this is a known bad id
+	if hatid in bad_ids: return False
+
+	# Get the field if not specified
+	if field is None:
+		field = get_field_of(hatid)
+
+	# Load/make features
+	feat_fname = hat_features_fname(hatid, model_prefix)
+	if not os.path.exists(feat_fname) or overwrite:
+		lc = load_full_tfalc_from_scratch(hatid, field=field, keylist_dat=keylist)
+		features = fs.get_features(lc, save_pcov=True, pcov_file=get_pcov_file(hatid))
+		pickle.dump(features, open(feat_fname, 'wb'))
+	else:
+		try:
+			features = pickle.load(open(feat_fname, 'rb'))
+		except:
+			logprint("        gf > pickled features file exists but we can't open it. Regenerating.", all_nodes=True)
+			lc = load_full_tfalc_from_scratch(hatid, field=field, keylist_dat=keylist)
+			features = fs.get_features(lc, save_pcov=True, pcov_file=get_pcov_file(hatid))
+			pickle.dump(features, open(feat_fname, 'wb'))
+	if features is None: return False
+	return True

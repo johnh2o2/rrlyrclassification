@@ -48,6 +48,9 @@ if not RUNNING_ON_DELLA:
 	LCCACHE = "/Users/jah5/Documents/Fall2014_Gaspar/rrlyr_classification/lccache"
 	feat_dir = "/Users/jah5/Documents/Fall2014_Gaspar/features"
 
+for Dir in [ LCCACHE, keylist_dir, data_dir, model_dir, model_output_dir, feat_dir ]:
+	if not os.path.isdir(Dir): os.makedirs(Dir)
+
 labeled_hatids_fname = "%s/labeled_hatids.txt"%(model_output_dir)
 vartypes_to_classify = [ 'RRAB','none' ]
 skip_vartypes = [ '*' , 'R' , 'RR', 'R(B)']
@@ -157,11 +160,14 @@ get_pcov_file    = lambda HATID  : "%s/%s.pcov"%(LCCACHE, HATID )
 get_model_name = lambda iteration : "%s_iter%04d"%(model_prefix, iteration)
 get_scores_fname = lambda HATID, iteration  : "%s/%s-%s.scores"%(LCCACHE, HATID, get_model_name(iteration))
 
+get_hatids_in_field_fname = lambda field : "%s/hatids_in_field_%s.list"%(data_dir, field)
+
 get_labeled_hatids_fname = lambda : "%s/labeled_hatids.dat"%(model_output_dir)
 get_mystery_hatids_fname = lambda iteration : "%s/uncertain_labels_iter%d.dat"%(model_output_dir, iteration)
 #get_classifier_fname = lambda iteration : "%s/classifier_iter%04d.pkl"%(model_output_dir, iteration)
 get_classifier_fname = lambda iteration : "%s/bagged_comp_clfr_iter%04d"%(model_output_dir, iteration)
 get_keylist_dir = lambda field : "/home/jhoffman/2007_hatnet_phot/G%s/BASE"%(field)
+get_remote_keylist_fname = lambda field : "%s/keylist.txt"%(get_keylist_dir(field))
 get_local_keylist_dir = lambda : model_dir
 get_local_keylist_fname = lambda field : "%s/keylist_field%s.txt"%(get_local_keylist_dir(), field)
 
@@ -176,7 +182,9 @@ get_candidate_results_fname = lambda iteration : "%s/results_iter%04d.dat"%(mode
 get_gzipped_csv_lc_fname = lambda hatid : "%s/%s-hatlc.csv.gz"%(data_dir, hatid)
 get_raw_lc_fname = lambda hatid : "%s/%s.tfalc"%(LCCACHE, hatid)
 
+get_full_tfalc_fname = lambda hatid : "%s/%s-full.tfalc"%(LCCACHE, hatid)
 
+get_bad_ids_fname = lambda iteration : '%s/bad_ids_iter%04d.pkl'%(model_output_dir, iteration)
 
 
 API_KEY = {
@@ -187,20 +195,22 @@ API_KEY = {
 dt_labeled_hatids = np.dtype([
 	('ID', 'S15'), ('iter_detected', np.int_), ('label', 'S15')
 	])
-keylist_dt = np.dtype([
+keylist_dt_arr = [
 		('TSTF', 'S8'),
 		('EXP', float),
 		('BJD', float),
 		('FLT', str),
-		('unknown1', float),
-		('unknown2', float),
-		('unknown3', float),
-		('unknown4', float),
-		('unknown5', float),
-		('unknown6', float),
-		('unknown7', float),
-	])
-twomass_dt = np.dtype([ 	('hatid', 'S15'),
+		('unknown1', 'S20'), # The S20's are really float's, but some keylists have odd NULL strings just shoved in there.
+							 # That makes things break. So, to avoid this, we treat the irrelevant parts of the keylist as strings.
+		('unknown2', 'S20'),
+		('unknown3', 'S20'),
+		('unknown4', 'S20'),
+		('unknown5', 'S20'),
+		('unknown6', 'S20'),
+		('unknown7', 'S20'),
+	]
+keylist_dt = np.dtype(keylist_dt_arr)
+twomass_dt_arr = [ 	('hatid', 'S15'),
 						('ra', float),
 						('dec', float),
 						('jmag', float),
@@ -221,7 +231,8 @@ twomass_dt = np.dtype([ 	('hatid', 'S15'),
 						('zmag', float),
 						('hatfield', int),
 						('hatfield objid', int)
-				])
+				]
+twomass_dt = np.dtype(twomass_dt_arr)
 
 gcvs_m = []
 gcvs_m_types = {}

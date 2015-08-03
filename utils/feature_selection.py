@@ -300,8 +300,10 @@ def GetVariabilityFeatures(t, x ):
 		var_feats['binned_distro_z%.2f_%.2f'%(edges[i], edges[i+1])] = distro[i]
 	return var_feats
 def get_features(lc, nfreqs = npers, nharmonics=nharmonics, loud=False, detrend_vars=None, save_pcov=False, pcov_file=None):
+	if lc is None: return None
 	Features = {}
 	if save_pcov and pcov_file is None: raise Exception("get_features: save_pcov is True, but pcov_file is None")
+
 
 
 	if loud: print "detrending..."
