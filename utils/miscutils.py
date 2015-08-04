@@ -38,27 +38,7 @@ all_fields = [ F for F in field_info ]
 
 hatid_field_list_fname = "%s/hatid_field_list.pkl"%(LCCACHE)
 hatid_field_list = {}
-def get_hatid_field_list():
-	logprint("Getting hatid field list!", all_nodes=True)
-	for field in all_fields:
-		fname = get_hatids_in_field_fname(field)
-		if not os.path.exists(fname):
-			logprint("List of HATID's for field %s does not yet exist. Making one!"%(field), all_nodes=True)
-			res = make_hatid_list(field)
-			if res is None: 
-				logprint("Oh wait, we don't know where that field is on the system yet!", all_nodes=True)
-				continue
-		hatids = pickle.load(open(fname, 'rb'))
-		if hatids is None: continue
 
-		for hatid in hatids:
-			hatid_field_list[hatid] = field
-	pickle.dump(hatid_field_list, open(hatid_field_list_fname, 'wb'))
-
-if not os.path.exists(hatid_field_list_fname):
-	get_hatid_field_list()
-
-hatid_field_list = pickle.load(open(hatid_field_list_fname, 'rb'))
 
 
 
@@ -1312,6 +1292,28 @@ def load_bad_ids(iteration):
 		bad_ids_ = pickle.load(open(get_bad_ids_fname(i), 'rb'))
 		for ID in bad_ids_: BAD_IDS.append(ID)
 	return BAD_IDS
+
+def get_hatid_field_list():
+	logprint("Getting hatid field list!", all_nodes=True)
+	for field in all_fields:
+		fname = get_hatids_in_field_fname(field)
+		if not os.path.exists(fname):
+			logprint("List of HATID's for field %s does not yet exist. Making one!"%(field), all_nodes=True)
+			res = make_hatid_list(field)
+			if res is None: 
+				logprint("Oh wait, we don't know where that field is on the system yet!", all_nodes=True)
+				continue
+		hatids = pickle.load(open(fname, 'rb'))
+		if hatids is None: continue
+
+		for hatid in hatids:
+			hatid_field_list[hatid] = field
+	pickle.dump(hatid_field_list, open(hatid_field_list_fname, 'wb'))
+
+if not os.path.exists(hatid_field_list_fname):
+	get_hatid_field_list()
+
+hatid_field_list = pickle.load(open(hatid_field_list_fname, 'rb'))
 
 
 get_lc_fname = get_raw_lc_fname
