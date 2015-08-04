@@ -1220,15 +1220,19 @@ get_2mass_data_dir = lambda field : "/H/CAT/2MASS/2MASS_JH_AP/data"
 get_2mass_shell_script = lambda field : "/home/jhoffman/color-file.sh"
 
 def open_ssh_connection():
+	logprint("  open_ssh_connection: in function.", all_nodes=True)
 	config = SSHConfig()
 	with open(os.path.expanduser('~/.ssh/config')) as config_file:
 	    config.parse(config_file)
 	d = config.lookup(ssh_host_name)
-
+	logprint("  open_ssh_connection: d['hostname'] = %s, d.get('user') = %s"%(d['hostname'], d.get('user')), all_nodes=True)
 	ssh = SSHClient()
 	ssh.load_system_host_keys() #NOTE: no AutoAddPolicy() 
+	logprint("  open_ssh_connection: loaded system host keys!", all_nodes=True)
 	ssh.connect(d['hostname'], username=d.get('user'))
+	logprint("  open_ssh_connection: connected.", all_nodes=True)
 	sftp = ssh.open_sftp()
+	logprint("  open_ssh_connection: opened sftp.", all_nodes=True)
 
 	return ssh, sftp
 def close_ssh_connection(ssh, sftp):
