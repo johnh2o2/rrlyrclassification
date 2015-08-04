@@ -29,14 +29,6 @@ for c in colnames:
 	dts[c] = dt
 
 
-if not RUNNING_ON_DELLA:
-	get_lc_fname = get_gzipped_csv_lc_fname
-	load_lightcurve = lambda hatid : rhlc.read_hatlc(get_lc_fname(hatid))
-
-else:
-	get_lc_fname = get_raw_lc_fnamer
-	load_lightcurve = load_full_tfalc_from_scratch
-
 def logprint(m, all_nodes=False):
 	if VERBOSE and all_nodes: print "node %d: %s "%(comm.rank, m)
 	elif VERBOSE and ROOT: print m
@@ -1320,6 +1312,10 @@ def load_bad_ids(iteration):
 		bad_ids_ = pickle.load(open(get_bad_ids_fname(i), 'rb'))
 		for ID in bad_ids_: BAD_IDS.append(ID)
 	return BAD_IDS
+
+
+get_lc_fname = get_raw_lc_fname
+load_lightcurve = load_full_tfalc_from_scratch
 
 def get_bagged_samples(Categories, size):
 	Samples = {}
