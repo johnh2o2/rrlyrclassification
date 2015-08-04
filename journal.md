@@ -33,10 +33,24 @@
 * To make things work more parallel, I decided to go with bagging models (#bags = #cores at the moment)
 	* Debugging status: things are hanging up in the `masterslave.py` file...still not sure what the cause of this is...
 		* This was caused by an empty sublist in the `work_packets` list.
-	* Need to extend pickle for I/O
-	* 
+* Need to extend pickle for I/O
+	* Did this; 
 
 #July 27, 2015
 
-* Making `create_initial_labeled_hatids.py` download the lightcurves. In order to do this, we need a function that *generates* keylist/twomass files.
+* Making `create_initial_labeled_hatids.py` download the lightcurves. In order to do this, we need a function that *generates* twomass files.
+	* Done; just uses binary twomass file to get twomass data for individual hatids.
 * t-SNE **LOOK AT THIS!!!** https://www.youtube.com/watch?v=RJVL80Gg3lA&list=UUtXKDgv1AVoG88PLl8nGXmw
+
+#August 4, 2015
+
+* Problem with ssh'ing into phn1 on della; it's because there was some change on della and I'm now jah5@della4 not jah5@della3; made a new dsa key, added to `authorized_keys` on `phn1`; can log in without password now
+* new error:
+
+```bash
+ssh.connect(d['hostname'], username=d.get('user'))
+  File "build/bdist.linux-x86_64/egg/paramiko/client.py", line 237, in connect
+socket.gaierror: [Errno -3] Temporary failure in name resolution
+```
+
+* 
