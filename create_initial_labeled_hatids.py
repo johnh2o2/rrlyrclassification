@@ -87,12 +87,12 @@ def prune_and_save(results):
 
 if size == 1:
 	
-	logprint("                               : opening ssh connection", all_nodes = True)
+	#logprint("                               : opening ssh connection", all_nodes = True)
 	
 	# Download full tfalc lightcurves
-	ssh, sftp = open_ssh_connection()
-	logprint("                               : Downloading lcs.")
-	dl = lambda hatid : load_full_tfalc_from_scratch(hatid, ssh=ssh, sftp=sftp)
+	#ssh, sftp = open_ssh_connection()
+	#logprint("                               : Downloading lcs.")
+	dl = lambda hatid : load_full_tfalc_from_scratch(hatid)#, ssh=ssh, sftp=sftp)
 	for hatid in hatids: dl(hatid)
 
 	logprint("                              : Now generating features!")
@@ -101,7 +101,7 @@ if size == 1:
 	for hatid in hatids: results.append((hatid, generate_features(hatid)))
 
 	prune_and_save(results)
-	close_ssh_connection(ssh, sftp)
+	#close_ssh_connection(ssh, sftp)
 
 elif ROOT:
 	logprint("                              : Downloading lcs.")
@@ -115,11 +115,11 @@ elif ROOT:
 
 else:
 	# Download full tfalc lightcurves
-	logprint("                                     : opening ssh connection", all_nodes = True)
-	ssh, sftp = open_ssh_connection()	
+	#logprint("                                     : opening ssh connection", all_nodes = True)
+	#ssh, sftp = open_ssh_connection()	
 	logprint("                                     : Done -- starting slave operation", all_nodes=True)
-	msl.slave(lambda hatid : load_full_tfalc_from_scratch(hatid, ssh=ssh, sftp=sftp, save_full_lc=True))
-	close_ssh_connection(ssh, sftp)
+	msl.slave(lambda hatid : load_full_tfalc_from_scratch(hatid, save_full_lc=True))
+	#close_ssh_connection(ssh, sftp)
 
 	# Generate features!
 	msl.slave(lambda hatid : (hatid, generate_features(hatid)))

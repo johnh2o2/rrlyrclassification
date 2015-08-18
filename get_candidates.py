@@ -27,7 +27,7 @@ iteration = get_iteration_number()
 
 bad_ids = load_bad_ids(iteration)
 
-remote_path = field_info[field_to_analyze]
+#remote_path = field_info[field_to_analyze]
 
 dest_path = LCCACHE
 if not os.path.isdir(dest_path): 
@@ -35,12 +35,12 @@ if not os.path.isdir(dest_path):
 	os.makedirs(dest_path)
 
 # load parameters to setup ssh connection
-logprint(" get_candidates: setting up ssh connection...")
-ssh, sftp = open_ssh_connection()
-logprint("               : done.")
+#logprint(" get_candidates: setting up ssh connection...")
+#ssh, sftp = open_ssh_connection()
+#logprint("               : done.")
 
 # Get HAT ID's that are located in this field
-field_hatids = get_field_ids(field_to_analyze, sftp)
+field_hatids = get_field_ids(field_to_analyze)
 
 if not NFILES_MAX is None and len(all_files) > NFILES_MAX:
 	hatids = [ field_hatids[i] for i in range(NFILES_MAX) ]
@@ -48,10 +48,10 @@ if not NFILES_MAX is None and len(all_files) > NFILES_MAX:
 assert(len(np.unique(hatids)) == len(hatids)) # Make sure there are no repeats!
 
 # Download things!
-if ROOT:
-	results = msl.master(hatids)
-else:
-	msl.slave(lambda hatid : sftp.get( get_remote_lc_filename(hatid), get_raw_lc_fname(hatid)))
+#if ROOT:
+#	results = msl.master(hatids)
+#else:
+#	msl.slave(lambda hatid : sftp.get( get_remote_lc_filename(hatid), get_raw_lc_fname(hatid)))
 
 # Load classifier
 logprint(" get_candidates: Loading classifier: %s"%(get_classifier_fname(iteration)))
@@ -66,7 +66,7 @@ if rank == 0:
 	keylist = load_keylist(field_to_analyze)
 	
 	
-close_ssh_connection(ssh, sftp)
+#close_ssh_connection(ssh, sftp)
 
 logprint("               : broadcasting keylist dictionary")
 keylist = comm.bcast(keylist, root=0)

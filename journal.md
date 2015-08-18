@@ -53,4 +53,75 @@ ssh.connect(d['hostname'], username=d.get('user'))
 socket.gaierror: [Errno -3] Temporary failure in name resolution
 ```
 
-* 
+* **SNAG:** they do NOT allow outside connections on the compute nodes (makes sense, security reasons)
+	* Will need to write an rsync script to get things moved from phn1 to della;
+	* Space: assume 2Mb per tfalc lc; 5*10^6 lc's = 10 Tb of space (!!!)
+	* I have a 10 Tb allocation on /tigress...275Gb are taken up by my N-body sims...might want to delete them?
+	* A message from bill:
+```
+Della and Tiger have their own scratch spaces - /scratch/gpfs which
+is parallel, not backed up and seen by all nodes including tigressdata;
+/scratch/network which is serial, not backed up and seen by all nodes;
+and each compute node's individual /scratch.
+
+The default quota on /scratch/gpfs is also 500G. How much data do
+you need to pull in? Which cluster are you using?
+```
+
+#August 12, 2015
+* Need to write script that transfers data via `rsync` to **tigress**;
+	* Run in parallel (4 threads at once?)
+
+* E-mail from Waqas:
+
+```txt
+Hi John,
+
+Direct NFS to della/tigress from our machines is probably out of the
+question (but I would ask if they'd allow us to mount their scratch
+space). rsync over ssh if that's allowed might be your best option. I
+wouldn't use a big single rsync though; you'll need to parallelize it by
+breaking up by directories (perhaps one rsync process per LC directory),
+with a maximum of 4 or so running at the same time. We only have 1-Gbit
+uplinks from our racks to the rest of campus (we should ask to upgrade
+this too), so this will take some time.
+
+- see this for ideas:
+https://wiki.ncsa.illinois.edu/display/~wglick/Parallel+Rsync
+- pull from their side rather than push from our side
+- use weak SSH ciphers to speed things up
+- use the --whole-file flag (-W) to skip rsync delta checking (this
+slows things down a lot)
+- note that rsync is terrible at lots of tiny files
+- do an ssh-copy-id command from their end to ours (probably on phn1) to
+copy over your della account SSH key to our server so no password
+prompts will be required
+
+Here's an rsync over ssh command I've used to transfer things around at
+70 MB/sec or so:
+
+on della/tigress:
+
+$ nohup rsync -aurvhW --stats --rsh="ssh -c arcfour -o Compression=no"
+phnX:/source/dir/path/ /path/to/destination/ > rsync-process-XX.log &
+
+rsync with these options over NFS can do a bit better (around 100
+MB/sec) with our 1-Gbit links.
+```
+
+* Note to self: **delete `.tfalc` files once a `-full.tfalc` file is made**
+* Rsync pull: `rsync [OPTION...] [USER@]HOST:SRC... [DEST]` (from http://linux.die.net/man/1/rsync)
+* Thoughts
+	* Avoid mpi, no scheduler so this isn't necessary
+	* Use python (i.e. the `subprocess` module) to spawn rsync commands. (use `subprocess.check_call`, which waits for the command to complete or throws error!)
+* Script to transfer data written (and a script to get directory sizes written for use on `phn1`)
+* **THERE ARE ~8.2 TB OF DATA**
+	* So, enough that I can transfer EVERYTHING to tigress.
+* Currently pulling from tigressdata:
+	* Transfer rate ~ 110 MB/s (running on 4 threads...sooo I assume this is about 30 MB/s per thread)
+* It looks like `*-full.tfalc` files are ~3 times the size of the original `tfalc` files...this is a problem. 
+	* Solved if we use gzip to compress/decompress files. *smaller* than original LC.
+
+# August 17
+
+* Wrote script to download twomass information for all hatids; runs `nthreads` processes on `phn1`. This finished last night!

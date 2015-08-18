@@ -166,13 +166,17 @@ get_mystery_hatids_fname = lambda iteration : "%s/uncertain_labels_iter%d.dat"%(
 get_classifier_fname = lambda iteration : "%s/bagged_comp_clfr_iter%04d"%(model_output_dir, iteration)
 get_keylist_dir = lambda field : "/home/jhoffman/2007_hatnet_phot/G%s/BASE"%(field)
 get_remote_keylist_fname = lambda field : "%s/keylist.txt"%(get_keylist_dir(field))
-get_local_keylist_dir = lambda : model_dir
+get_local_keylist_dir = lambda : keylist_dir
 get_local_keylist_fname = lambda field : "%s/keylist_field%s.txt"%(get_local_keylist_dir(), field)
+get_local_keylist_dict_fname = lambda field : "%s/keylist_field%s_dict.pklz"%(get_local_keylist_dir(), field)
+
 
 get_remote_2mass_dir = lambda : "/home/jhoffman"
 get_remote_2mass_fname = lambda field : "%s/colors_field%s.dat"%(get_remote_2mass_dir(), field)
 get_local_2mass_dir = lambda : model_output_dir
 get_local_2mass_fname = lambda field : "%s/colors_field%s.dat"%(get_local_2mass_dir(), field)
+
+
 
 get_candidate_fname = lambda iteration : "%s/candidates_iter%04d.dat"%(model_output_dir, iteration)
 get_candidate_results_fname = lambda iteration : "%s/results_iter%04d.dat"%(model_output_dir, iteration)

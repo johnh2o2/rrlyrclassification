@@ -9,7 +9,7 @@ from paramiko import SSHConfig, SSHClient
 from sklearn.lda import LDA
 from lcutils.lcutils_config import *
 from settings import *
-import sys, os, re
+import sys, os, re, gzip
 import fastlombscargle as lsp
 from os.path import exists
 import cPickle as pickle
@@ -937,66 +937,58 @@ def download_lc(hatid, sftp=None):
 def save_and_return(lc, hatid, save_full_lc):
 	# Save lightcurve
 	if save_full_lc: 
+		f = gzip.open(get_full_tfalc_fname(hatid), 'wb')
 		logprint("   ==> saving %s lc to %s"%(hatid, get_full_tfalc_fname(hatid)), all_nodes=True)
-		pickle.dump(lc, open(get_full_tfalc_fname(hatid), 'wb'))
+		pickle.dump(lc, f)
+		f.close()
 	return lc
 
-def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_dat=None, ssh=None, sftp=None, save_full_lc=True, min_observations=5):
+def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_dat=None, ssh=None, sftp=None, save_full_lc=True, min_observations=5, delete_raw_lc=True):
 	logprint("  load_full_tfalc_from_scratch ** %s"%(hatid), all_nodes=True)
 
 	# Load full lightcurve if one is available
 	if os.path.exists(get_full_tfalc_fname(hatid)): 
 		logprint("    (loading) %s"%(hatid), all_nodes=True)
-		# There have been some problems loading the pickled lightcurves. This will regenerate a lightcurve if it's found to be broken.
 		try:
-			full_tfalc = pickle.load(open(get_full_tfalc_fname(hatid), 'rb'))
+			f = gzip.open(get_full_tfalc_fname(hatid), 'rb')
+			full_tfalc = pickle.load(f)
+			f.close()
 			return full_tfalc
 		except:
 			logprint("               !                  %s  ! can't load %s"%(hatid, get_full_tfalc_fname(hatid)), all_nodes=True)
-
-
-
 	
-	# Deal with ssh connections.
-	close_it = False
-	if ssh is None or sftp is None:
-		logprint("                                  %s  >  opening ssh"%(hatid), all_nodes=True)
-		ssh, sftp = open_ssh_connection()
-		close_it = True
-
-	
+	# Find field of HATID
 	if field is None:
 		logprint("                                  %s  >  getting field..."%(hatid), all_nodes=True)
 		field = get_field_of(hatid)
 
-	# Make sure lightcurve exists...
+	# Make sure .tfalc lightcurve exists on the local system...
 	if not os.path.exists(get_raw_lc_fname(hatid)): 
-		logprint("                                  %s  >  downloading..."%(hatid), all_nodes=True)
-		stat = download_lc(hatid, sftp=sftp)
-		if not stat: 
-			logprint("                    !             %s  !  download had an error :( ..."%(hatid), all_nodes=True)
-			return save_and_return(None, hatid, save_full_lc)
+		return save_and_return(None, hatid, save_full_lc)
 
-	# Deal with keylist data
+	# Load keylist for field
 	if keylist_dat is None:
 		logprint("                                  %s  >  getting keylist data..."%(hatid), all_nodes=True)
 		keylist = load_keylist(field)
 		if keylist is None:
 			logprint("                    !             %s  !  KEYLIST is no good :("%(hatid), all_nodes=True)
 			
-			return save_and_return(None,hatid,  save_full_lc)
+			return save_and_return(None, hatid,  save_full_lc)
 
 	logprint("                                  %s  >  getting twomass data..."%(hatid), all_nodes=True)
-	# deal with 2mass data
-	twomass_dat = get_2mass_data_for_hatid(hatid, client=ssh)
 
+	# Obtain twomass/color data for hatid
+	if twomass_dat is None:
+		if not hatid in all_twomass_data:
+			logprint("                    !             %s  !  No twomass information loaded.\n\t\t\t You'll need to run make_2mass_info_file.py again for this hatid"%(hatid), all_nodes=True)
+			return save_and_return(None, hatid,  save_full_lc)
+		elif all_twomass_data[hatid] is None:
+			logprint("                    !             %s  !  No twomass information is available!", all_nodes=True)
+			return save_and_return(None, hatid,  save_full_lc)
+		else:
+			twomass_dat = all_twomass_data[hatid]
 
-	# Close ssh connections if necessary
-	if close_it: 
-		logprint("                                  %s  >  closing ssh connection..."%(hatid), all_nodes=True)
-		close_ssh_connection(ssh, sftp)
-
-	# Get lightcurve
+	# Load tfalc lightcurve; add twomass/keylist data to it.
 	logprint("                                  %s  >  loading lc..."%(hatid), all_nodes=True)
 	lc = load_full_tfalc(get_raw_lc_fname(hatid), keylist, twomass_dat)
 	if lc is None: 
@@ -1004,6 +996,7 @@ def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_da
 		return save_and_return(None, hatid, save_full_lc)
 
 	logprint("                                  %s  >  pruning out bad inds..."%(hatid), all_nodes=True)
+
 	# Prune out missing keylist datapoints:
 	lc = prune_out_bad_inds(lc)
 
@@ -1012,7 +1005,12 @@ def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_da
 		logprint("                    !             %s  !  too few observations!!"%(hatid), all_nodes=True)
 		return save_and_return(None, hatid, save_full_lc)
 	
+	# To save space, once the pickled lightcurve is generated, the original tfalc is discarded.
+	if delete_raw_lc:
+		os.remove(get_raw_lc_fname(hatid))
+
 	return save_and_return(lc, hatid, save_full_lc)
+
 def rexists(sftp, path):
     """os.path.exists for paramiko's SCP object
     """
@@ -1024,15 +1022,15 @@ def rexists(sftp, path):
         raise
     else:
         return True
-def get_field_ids(field, sftp):
-	logprint(" getting hat ids in field %s"%(field), all_nodes=True)
-	remote_path = field_info[field]
-	if not rexists(sftp, remote_path):
-		logprint(" field %s is not where we think it is (%s)"%(field, remote_path), all_nodes=True)
-		return None
 
-	sftp.chdir(remote_path)
-	files = sftp.listdir()
+def get_field_ids(field):
+	return [ hatid for hatid in hatid_field_list if hatid_field_list[hatid] == field ]
+
+def get_available_field_ids(field):
+
+	dirname = "%s/%s"%(LCCACHE, field)
+	
+	files = os.listdir(dirname)
 
 	field_ids = []
 	for f in files:
@@ -1053,22 +1051,8 @@ def print_list(l):
 	return pstr
 def get_field_of(hatid):
 	if not hatid in hatid_field_list: return None
-	
 	return hatid_field_list[hatid]
 
-	# exhaustive search. slower than it needs to be.
-	#for field in all_fields:
-	#	fname = get_hatids_in_field_fname(field)
-	#	if not os.path.exists(fname):
-	#		logprint("List of HATID's for field %s does not yet exist. Making one!"%(field), all_nodes=True)
-	#		res = make_hatid_list(field)
-	#		if res is None: 
-	#			logprint("Oh wait, we don't know where that field is on the system yet!", all_nodes=True)
-	#			return None
-	#	hatids = pickle.load(open(fname, 'rb'))
-	#	if hatids is None: continue
-	#	if hatid in hatids: return field
-	#return None
 def get_remote_tfalc_filename(hatid):
 	field = get_field_of(hatid)
 	if field is None: return None
@@ -1125,31 +1109,17 @@ def safe_open_keylist(fname):
 
 
 		return keylist_dat
-def load_keylist(field, sftp=None):
-
-	# ssh stuff
-	close_it = False
-	if sftp is None:
-		ssh, sftp = open_ssh_connection()
-		close_it = True
-	
-	klfname_r = "%s/keylist.txt"%(get_keylist_dir(field))
-	klfname_l = get_local_keylist_fname(field)
+def load_keylist(field):
+	klfname_l = get_local_keylist_dict_fname(field)
 
 	if not os.path.exists(klfname_l):
-		klfilesize = sftp.stat(klfname_r).st_size
-		logprint("               : remote keylist.txt filesize "+`klfilesize`)
+		logprint("Warning: keylist data for field %s is not available!"%(field))
+		return None
 
-		if not rexists(sftp, klfname_r): raise Exception("Cannot find keylist %s for field %s on remote system."%(klfname_r, field))
-
-		sftp.get(klfname_r, klfname_l)
-	
-	keylist_data = safe_open_keylist(klfname_l)
-	keylist = make_keylist_dict(keylist_data)
-
-	if close_it: close_ssh_connection(ssh, sftp)
+	keylist = pickle.load(gzip.open(klfname_l, 'rb'))
 
 	return keylist
+
 def make_hatid_list(field, sftp=None, ssh=None):
 	# Get list of hatids that are in this field
 	close_it = False
@@ -1241,6 +1211,7 @@ def close_ssh_connection(ssh, sftp):
 def conv(r, t):
 	if isinstance(t, str): return r
 	else: return t(r)
+
 def get_2mass_data_for_hatid(hatid, client, field=None):
 	if field is None:
 		field = get_field_of(hatid)
@@ -1250,7 +1221,11 @@ def get_2mass_data_for_hatid(hatid, client, field=None):
 	lines = []
 	for line in stdout:
 		lines.append(line.strip('\n'))
-	results = lines[1].split()
+	try:
+		results = lines[1].split()
+	except:
+		print "Warning, %s 2mass data could not be obtained."%(hatid)
+		return None
 	assert(len(results) == len(twomass_dt_arr))
 	RES = [ (results[i],) + twomass_dt_arr[i] for i in range(len(results)) ]
 	#print RES[0]
@@ -1319,7 +1294,9 @@ if not os.path.exists(hatid_field_list_fname):
 
 hatid_field_list = pickle.load(open(hatid_field_list_fname, 'rb'))
 
+#all_twomass_data = pickle.load(gzip.open("twomass_info.pklz", 'rb'))
 
+get_raw_lc_fname = lambda hatid : "%s/%s/%s.tfalc"%(LCCACHE, get_field_of(hatid), hatid)
 get_lc_fname = get_raw_lc_fname
 load_lightcurve = load_full_tfalc_from_scratch
 
