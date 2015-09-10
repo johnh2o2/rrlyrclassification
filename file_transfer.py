@@ -1,10 +1,14 @@
+
 import subprocess, os, shlex, sys
 from time import time
+from settings import *
 
 nthreads = 2
 RSYNC_RSH="ssh -c arcfour -o Compression=no"
 #remote_server="jah5@phn1.astro.princeton.edu"
 remote_server="phn1"
+
+
 
 def new_proc(rdir, ldir):
 	print "Starting process to move %s to %s"%(rdir, ldir)
@@ -23,6 +27,36 @@ def new_proc(rdir, ldir):
 	print "  --> started %s to %s"%(rdir, ldir)
 
 	return proc, ldir
+
+def transfer_gcvs():
+
+	print "GCVS TRANSFER"
+	print "importing..."
+	from utils.miscutils import open_ssh_connection, close_ssh_connection, get_field_of, rexists
+	print "loading hatids.."
+	hatids 				= pickle.load(open("%s/good_gcvs_hatids.list"%(parent_dir), 'rb'))
+	print "opening ssh connection.."
+	client, sftp = open_ssh_connection()
+	for i,hatid in enumerate(hatids):
+		print hatid, " (GCVS) %d/%d"%(i+1, len(hatids))
+		field = get_field_of(hatid)
+		if field is None: 
+			print " ++++++ ",hatid, " (GCVS) %d/%d"%(i+1, len(hatids)), " field is None!"
+			continue
+		directory = "%s/%s"%(LCCACHE, field)
+
+		fname = "%s.tfalc"%(hatid)
+		fname_r = "%s/%s"%(field_list[field], fname)
+		fname_l = "%s/%s"%(directory, fname)
+		if not rexists(sftp, fname_r ): 
+			print "-----  ",hatid, " (GCVS) %d/%d"%(i+1, len(hatids)), "is not available on phn1"
+			continue
+		if not os.path.isdir(directory): os.makedirs(directory)
+		
+		sftp.get(fname_r, fname_l)
+
+	close_ssh_connection(client, sftp)
+
 
 def transfer(remote_dirs, local_dirs, nthreads=nthreads):
 	assert(len(remote_dirs) == len(local_dirs))
@@ -56,14 +90,16 @@ def transfer(remote_dirs, local_dirs, nthreads=nthreads):
 if __name__ == '__main__':
 	import cPickle as pickle
 	field_list = pickle.load(open("field_info2.pkl", 'rb'))
-	fields = [ field for field in field_list ]
-	#fields = [ fields[i] for i in range(2) ]
+	#fields = [ field for field in field_list ]
+	fields =fields_to_analyze
 	
+	if 'gcvs' in fields: transfer_gcvs()
 	#ldir_pfix = "/tigress/jah5/rrlyr_scratch/LCCACHE"
-	ldir_pfix = "testing_file_transfer"
+	#ldir_pfix = "testing_file_transfer"
+	ldir_pfix = "/Users/jah5/Documents/Fall2014_Gaspar/rrlyr_classification/SCRATCH/LCCACHE"
 
-	remote_dirs = [ "%s/"%(field_list[field]) for field in fields ]
-	local_dirs = [ "%s/%s"%(ldir_pfix, field) for field in fields ]
+	remote_dirs = [ "%s/"%(field_list[field]) for field in fields if not field == 'gcvs' ]
+	local_dirs = [ "%s/%s"%(ldir_pfix, field) for field in fields if not field == 'gcvs']
 
 	transfer(remote_dirs, local_dirs)
 

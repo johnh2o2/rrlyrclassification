@@ -136,6 +136,7 @@ def new_proc(field):
 	# make file of hatids in the field
 	hatids_fname = "%s/hatids_field%s.dat"%(SCRATCH, field)
 	if not os.path.exists(hatids_fname) or FORCE_REDO:
+		
 		all_hatids = [ hatid for hatid in hatid_field_list if hatid_field_list[hatid] == field and not hatid in tmd ]
 		print "making hatids file for field %s..."%(field)
 		f = open(hatids_fname, 'w')
@@ -200,7 +201,7 @@ if __name__ == '__main__':
 	fields = [ field for field in field_list ]
 	#fields.append("gcvs")
 
-	#generate_color_files( fields )
+	generate_color_files( fields )
 	tmd = download_and_add_colorfiles( fields )
 
 

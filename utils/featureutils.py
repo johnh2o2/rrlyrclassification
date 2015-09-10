@@ -331,9 +331,6 @@ def MakeObservations(feats, classes):
 			obs.append(feats[ID][k])
 		Observations.append(obs)
 	return np.array(IDs), np.array(Keylist), np.array(Observations), np.array(Labels)
-
-
-
 def get_mc_fit_features(features, pcov_file, N=100 ):
 	
 	assert(os.path.exists(pcov_file))
@@ -353,42 +350,67 @@ def get_mc_fit_features(features, pcov_file, N=100 ):
 	#print len(feats), feats[0]
 	return feats
 
-def score_features(features, pcov_file, iteration=0, N=5000, kind="other"):
+def process(feats, iteration=None):
 
-	#mag_scaler, mag_model, other_scaler, other_model, \
-	other_rootname, mag_rootname,\
+	if iteration is None:
+		iteration = get_iteration_number()
+
+	other_rootname, mag_rootname, \
 	skip_features, mag_features, vartypes_to_classify, \
 	other_keylist, mag_keylist = pickle.load(open(get_classifier_fname(iteration), 'rb'))
 
+	logprint("  Cleaning features...")
+	feats = CleanFeatures(feats)
 
+	logprint("  Adding custom features...")
+	feats = AddCustomFeatures(feats)
 
-	#scalers = { 'mag' : mag_scaler, 'other' : other_scaler}
-	models  = { 'mag' : BaggedModel(), 'other' : BaggedModel()}
+	logprint("  Splitting features...")
+	magfeats, otherfeats = SplitFeatures(feats, mag_features)
+
+	logprint("  Making observations...")
+	if not magfeats is None:
+		magobs = []
+		for i in magfeats:
+			obs = []
+			for k in mag_keylist:
+				obs.append(magfeats[i][k])
+			magobs.append(obs)
+			
+	if not otherfeats is None:
+		otherobs = []
+		for i in otherfeats:
+			obs = []
+			for k in other_keylist:
+				obs.append(otherfeats[i][k])
+			otherobs.append(obs)
+
+	return feats, magfeats, otherfeats, magobs, otherobs
+
+def translate_features(features, iteration):
 	
-	models['mag'].load(mag_rootname)
-	models['other'].load(other_rootname)
+	feats, magfeats, otherfeats, magobs,  otherobs = process(features, iteration)
 
-	observs = { 'mag' : None, 'other' : None}
-	#scaler  =   scalers[kind]
-	model   =   models[kind]
+	observations = ZipAndMerge(magobs, otherobs)
+
+	return observations
+
+	
+
+def score_features(features, pcov_file, iteration=0, N=5000, kind="other"):
+
+	model = BaggedModel()
+	model.load(get_classifier_fname(iteration))
 
 	feats = get_mc_fit_features(features,pcov_file,N=N)
 	Feats = { i : f for i, f in enumerate(feats)  }
+	observations = translate_features(Feats, iteration)
 
-	F = CleanFeatures(Feats)
-	F = AddCustomFeatures(F)
-	
-	observs['mag'], observs['other'] = SplitFeatures(F, mag_features)
-
-	observations = make_obs(observs[kind], keylist=other_keylist)
-
-	#if not scaler is None:
-	#	observations = scaler.transform(observations)
 	scores = model.predict_proba(observations)
 
 	return np.array([ s[1] for s in scores ])
 
-def test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score):
+def test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score, iteration):
 	features = LoadFeatures(hatid)
 	
 	# If features is None, this is a bad ID
@@ -400,12 +422,15 @@ def test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score):
 
 	# Mark ID if it's a candidate
 	if is_candidate(scores, min_score, min_frac_above_min_score): 
+		#plt.hist(scores)
+		#plt.show(block=True)
+		print max(scores), min(scores), np.mean(scores), np.std(scores)
 		return True
 
 	else: 
 		return False
 
-def generate_features(hatid,  field=None, keylist=None):
+def generate_features(hatid,  field=None, keylist=None, save_full_lc=True):
 	logprint("  generate_features -- %s"%(hatid), all_nodes=True)
 	# Skip if this is a known bad id
 	if hatid in bad_ids: return False
@@ -417,7 +442,7 @@ def generate_features(hatid,  field=None, keylist=None):
 	# Load/make features
 	feat_fname = hat_features_fname(hatid, model_prefix)
 	if not os.path.exists(feat_fname) or overwrite:
-		lc = load_full_tfalc_from_scratch(hatid, field=field, keylist_dat=keylist)
+		lc = load_full_tfalc_from_scratch(hatid, field=field, keylist_dat=keylist, save_full_lc=True)
 		features = fs.get_features(lc, save_pcov=True, pcov_file=get_pcov_file(hatid))
 		pickle.dump(features, open(feat_fname, 'wb'))
 	else:
@@ -430,3 +455,5 @@ def generate_features(hatid,  field=None, keylist=None):
 			pickle.dump(features, open(feat_fname, 'wb'))
 	if features is None: return False
 	return True
+
+

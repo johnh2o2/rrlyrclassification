@@ -7,7 +7,8 @@ import cPickle as pickle
 
 ssh, sftp = open_ssh_connection()
 
-fields = np.unique([ hatid_field_list[hatid] for hatid in hatid_field_list ])
+#fields = np.unique([ hatid_field_list[hatid] for hatid in hatid_field_list ])
+fields = [ '145' ]
 bad_fields = []
 for field in fields:
 	print "%s"%(field)
@@ -47,6 +48,7 @@ for field in fields:
 	# Now try to make a dictionary out of that keylist
 	try:
 		keylist = make_keylist_dict(keylist_data)
+		logprint(" %s: Made keylist dict."%(field))
 	except:
 		logprint(" %s: Can't make keylist dict :(")
 		bad_fields.append(field)
@@ -56,6 +58,7 @@ for field in fields:
 	try:
 		f = gzip.open(klfname_d, 'wb')
 		pickle.dump(keylist, f)
+		logprint(" %s: Saved gzipped keylist dict."%(field))
 		f.close()
 	except:
 		logprint(" %s: Can't save keylist dict :(")

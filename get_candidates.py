@@ -12,46 +12,44 @@ from contextlib import closing
 from paramiko import SSHConfig, SSHClient
 from mpi4py import MPI
 
+#fields_to_analyze = [ '145' ]
 overwrite=True
-field_to_analyze = '219'
 
 # Get rank and size of mpi process
 comm = MPI.COMM_WORLD
 size = comm.Get_size()
 rank = comm.Get_rank()
+ROOT = (rank == 0)
 
 logprint(" get_candidates: MPI: rank = %d size = %d"%(rank, size))
 
 # What iteration are we on?
 iteration = get_iteration_number()
-
-bad_ids = load_bad_ids(iteration)
-
-#remote_path = field_info[field_to_analyze]
+logprint(" get_candidates: Looks like we're on iteration %d"%(iteration))
 
 dest_path = LCCACHE
 if not os.path.isdir(dest_path): 
-	logprint("%s is not a dir. Making it one."%(dest_path),all_nodes=True)
-	os.makedirs(dest_path)
+	raise Exception("The dest_path %s does not exist on the system."%(dest_path))
 
-# load parameters to setup ssh connection
-#logprint(" get_candidates: setting up ssh connection...")
-#ssh, sftp = open_ssh_connection()
-#logprint("               : done.")
 
-# Get HAT ID's that are located in this field
-field_hatids = get_field_ids(field_to_analyze)
+# Get ID's to skip.
+bad_ids = load_bad_ids(iteration)
 
-if not NFILES_MAX is None and len(all_files) > NFILES_MAX:
-	hatids = [ field_hatids[i] for i in range(NFILES_MAX) ]
+# Get list of labeled hatids (obviously avoid these...)
+if not os.path.exists(get_labeled_hatids_fname()): raise Exception(" Cannot find labeled hatids file %s"%(get_labeled_hatids_fname()))
+labeled_hatids = np.loadtxt(get_labeled_hatids_fname(), dtype=np.dtype([('hatid', 'S15'), ('iter', np.int_), ('label', 'S15')]))['hatid'].tolist()
+#print len(labeled_hatids)
+# Get HAT ID's that are located in the fields that we're analyzing (and that aren't already labeled)
+#hatids = [ hatid for hatid in hatid_field_list if get_field_of(hatid) in fields_to_analyze and not hatid in labeled_hatids ]
+#hatids = [ hatid for hatid in hatid_field_list if get_field_of(hatid) in fields_to_analyze and hatid in labeled_hatids ]
+hatids = labeled_hatids
+#print len(hatids)
+
+if not NFILES_MAX is None and len(hatids) > NFILES_MAX:
+	logprint(" get_candidates: only using first %d hatids."%(NFILES_MAX))
+	hatids = [ hatids[i] for i in range(NFILES_MAX) ]
 
 assert(len(np.unique(hatids)) == len(hatids)) # Make sure there are no repeats!
-
-# Download things!
-#if ROOT:
-#	results = msl.master(hatids)
-#else:
-#	msl.slave(lambda hatid : sftp.get( get_remote_lc_filename(hatid), get_raw_lc_fname(hatid)))
 
 # Load classifier
 logprint(" get_candidates: Loading classifier: %s"%(get_classifier_fname(iteration)))
@@ -60,16 +58,14 @@ classifier.load(get_classifier_fname(iteration))
 
 logprint(" get_candidates: getting keylist...")
 
-
-# Obtain keylist for field; this gives you info about filters & stuff for each obs.
-if rank == 0: 
-	keylist = load_keylist(field_to_analyze)
+keylists=None
+# Obtain keylists for relevant field(s); this gives you info about filters & stuff for each obs.
+if ROOT: 
+	logprint(" get_candidates: Loading keylists")
+	keylists = {field : load_keylist(field) for field in fields_to_analyze }
 	
-	
-#close_ssh_connection(ssh, sftp)
-
 logprint("               : broadcasting keylist dictionary")
-keylist = comm.bcast(keylist, root=0)
+keylists = comm.bcast(keylists, root=0)
 logprint("               : done.")
 
 # Master/slave workload distribution to make & test features
@@ -98,12 +94,12 @@ if ROOT:
 	print "%d candidates"%(len(CANDIDATES))
 
 	# Save results
-	pickle.dump(BAD_IDS, open(get_bad_ids_fname(iteration), 'wb'))
-	pickle.dump(CANDIDATES, open(get_candidate_fname(iteration), 'wb'))
+	#pickle.dump(BAD_IDS, open(get_bad_ids_fname(iteration), 'wb'))
+	#pickle.dump(CANDIDATES, open(get_candidate_fname(iteration), 'wb'))
 
 else:
-	msl.slave(lambda hatid : (hatid, generate_features(hatid, field=field_to_analyze, keylist=keylist)))
-	msl.slave(lambda hatid : (hatid, test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score)))
+	msl.slave(lambda hatid : (hatid, generate_features(hatid, field=hatid_field_list[hatid])))#, keylist=keylists[hatid_field_list[hatid]])))
+	msl.slave(lambda hatid : (hatid, test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score, iteration)))
 
 
 logprint("               : done.")

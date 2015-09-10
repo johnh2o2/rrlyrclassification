@@ -22,31 +22,61 @@ size = comm.Get_size()
 rank = comm.Get_rank()
 ROOT = (rank == 0)
 
-colnames = HATLC_COL_DEFS['hn']['tfalc']
-dts = {}
-for c in colnames:
-	dt = TEXTLC_OUTPUT_COLUMNS[c][3]
-	dts[c] = dt
+
 
 
 def logprint(m, all_nodes=False):
 	if VERBOSE and all_nodes: print "node %d: %s "%(comm.rank, m)
 	elif VERBOSE and ROOT: print m
 
+gcvs_info_file = "%s/gcvs_info.dict"%(parent_dir)
 field_info = pickle.load(open('field_info2.pkl', 'rb'))
 all_fields = [ F for F in field_info ]
-
-hatid_field_list_fname = "%s/hatid_field_list.pkl"%(LCCACHE)
 hatid_field_list = {}
+if not os.path.exists(gcvs_info_file):
+	print "making gcvs info file..."
+	hatid_field_list_fname = "%s/hatid_field_list.pkl"%(parent_dir)
+	hatid_field_list = pickle.load(open(hatid_field_list_fname, 'rb'))
+
+	print "loading gcvs ids..."
+	gcvs_ids = pickle.load(open("%s/good_gcvs_hatids.list"%(parent_dir), 'rb'))
+
+	print "making info..."
+	gcvs_info = {}
+	for hatid in gcvs_ids:
+		if not hatid in hatid_field_list: 
+			gcvs_info[hatid] = None
+		else:
+			gcvs_info[hatid] = hatid_field_list[hatid]
+
+	print "dumping.."
+	pickle.dump(gcvs_info, open(gcvs_info_file, 'wb'))
+
+else:
+	gcvs_info = pickle.load(open(gcvs_info_file, 'rb'))
 
 
+for field in fields_to_analyze:
+	if field == 'gcvs': 
+		for hatid in gcvs_info:
+			hatid_field_list[hatid] = gcvs_info[hatid]
+	else: 
+		field_ids = pickle.load(open("%s/hatids_in_field_%s.list"%(hatids_in_fields_dir, field), 'rb'))
+		for hatid in field_ids:
+			hatid_field_list[hatid] = field
 
+def get_field_of(hatid):
+	if not hatid in hatid_field_list: return None
+	else: return hatid_field_list[hatid]
+
+get_raw_lc_fname = lambda hatid :  "%s/%s/%s.tfalc"%(LCCACHE, get_field_of(hatid), hatid)
+get_lc_fname = lambda hatid :  "%s/%s-full.tfalc.gz"%(LCCACHE, hatid)
+#hatid_field_list = {}
 
 def get_iteration_number():
 	iteration = 1
 	while os.path.exists(get_classifier_fname(iteration)): iteration += 1
 	return iteration - 1
-
 def nancleaned(arr):
 	#print arr
 	return np.array([ a for a in arr if not np.isnan(a) ])
@@ -89,6 +119,8 @@ def get_t_x(lc, coltype='TF',selection='locally-brightest', ttype='BJD'):
 	t = []
 	x = []
 	ytypes = [ "%s%d"%(coltype, j+1) for j in range(0,3) ]
+
+
 	if selection == 'locally-brightest':
 		# use the aperture with the brightest flux at each observation
 		ndatas = 0
@@ -96,7 +128,7 @@ def get_t_x(lc, coltype='TF',selection='locally-brightest', ttype='BJD'):
 			obs = nancleaned([ lc[y][i] for y in ytypes  ])
 			if len(obs) == 0: continue
 			ndatas += 1
-			t.append(lc[ttype][i] - lc[ttype][0])
+			t.append(float(lc[ttype][i]) - float(lc[ttype][0]))
 			x.append(min(obs))
 
 	elif selection == 'globally-brightest':
@@ -111,22 +143,23 @@ def get_t_x(lc, coltype='TF',selection='locally-brightest', ttype='BJD'):
 				brightest_mag = mag
 		ndatas = 0
 		for i in range(len(lc[ttype])):
-			X = lc[brightest_ytype][i]
+			X = float(lc[brightest_ytype][i])
 			if np.isnan(X): continue
 			ndatas += 1
 			x.append(X)
-			t.append(lc[ttype][i] - lc[ttype][0])
+
+			t.append(float(lc[ttype][i]) - float(lc[ttype][0]))
 
 	elif selection in [1, 2, 3]:
 		# use a specified aperture
 		ytype = "%s%d"%(coltype, selection)
 		ndatas = 0
 		for i in range(len(lc[ttype])):
-			X = lc[ytype][i]
+			X = float(lc[ytype][i])
 			if np.isnan(X): continue
 			ndatas += 1
 			x.append(X)
-			t.append(lc[ttype][i] - lc[ttype][0])
+			t.append(float(lc[ttype][i]) - float(lc[ttype][0]))
 
 	else:
 		raise ValueError("I dont understand {0}".format(selection))
@@ -392,7 +425,6 @@ def beyond_nstd(t,x, n):
 	std = np.std(x)
 	mean = np.mean(x)
 	return float(len([ X for X in x if abs(X - mean)/std > n ]))/float(len(x))
-#def analyze_frequency evolution
 def fitting_function(*args):
 	# Fits multiple periods!
 	t = args[0]
@@ -560,8 +592,6 @@ def bs_fit_periods(t, x, ps, nsub=boot_size):
 	bsx = bsx[0]
 
 	return fit_periods(bst, bsx, ps)
-#def binned_stds(t, x, nbins=NBINS):
-#	return np.
 def correct_for_window(LSP0, WLSP, NSIG=5):
 	# Find outlier-free std and mean of the window
 	sig = np.std(WLSP)
@@ -937,66 +967,77 @@ def download_lc(hatid, sftp=None):
 def save_and_return(lc, hatid, save_full_lc):
 	# Save lightcurve
 	if save_full_lc: 
-		f = gzip.open(get_full_tfalc_fname(hatid), 'wb')
-		logprint("   ==> saving %s lc to %s"%(hatid, get_full_tfalc_fname(hatid)), all_nodes=True)
+		f = gzip.open(get_lc_fname(hatid), 'wb')
+		logprint("   ==> saving %s lc to %s"%(hatid, get_lc_fname(hatid)), all_nodes=True)
 		pickle.dump(lc, f)
 		f.close()
 	return lc
 
-def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_dat=None, ssh=None, sftp=None, save_full_lc=True, min_observations=5, delete_raw_lc=True):
+def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_dat=None, ssh=None, sftp=None, save_full_lc=True, min_observations=5, delete_raw_lc=True, force_redo = False):
 	logprint("  load_full_tfalc_from_scratch ** %s"%(hatid), all_nodes=True)
 
 	# Load full lightcurve if one is available
-	if os.path.exists(get_full_tfalc_fname(hatid)): 
+	if os.path.exists(get_lc_fname(hatid)) and not force_redo: 
 		logprint("    (loading) %s"%(hatid), all_nodes=True)
 		try:
-			f = gzip.open(get_full_tfalc_fname(hatid), 'rb')
+			f = gzip.open(get_lc_fname(hatid), 'rb')
 			full_tfalc = pickle.load(f)
 			f.close()
 			return full_tfalc
 		except:
-			logprint("               !                  %s  ! can't load %s"%(hatid, get_full_tfalc_fname(hatid)), all_nodes=True)
+			logprint("               !                  %s  ! can't load %s"%(hatid, get_raw_lc_fname(hatid)), all_nodes=True)
 	
 	# Find field of HATID
 	if field is None:
 		logprint("                                  %s  >  getting field..."%(hatid), all_nodes=True)
+
 		field = get_field_of(hatid)
 
 	# Make sure .tfalc lightcurve exists on the local system...
 	if not os.path.exists(get_raw_lc_fname(hatid)): 
+		logprint("                    !             %s  ! No tfalc lightcurve on the system."%(hatid), all_nodes=True)
 		return save_and_return(None, hatid, save_full_lc)
+	# Obtain twomass/color data for hatid
+	if twomass_dat is None:
+		if is_gcvs(hatid) and 'gcvs' in fields_to_analyze:
+			if not hatid in twomass_info_for_field['gcvs']:
+				logprint("                    !             %s  !  No twomass information available for hatid in `gcvs` field."%(hatid), all_nodes=True)
+				return save_and_return(None, hatid, save_full_lc)
+			twomass_dat = twomass_info_for_field['gcvs'][hatid]
 
+		elif not field in twomass_info_for_field:
+			logprint("                    !             %s  !  No twomass information loaded for field %s.\n\t\t\t You'll need to run make_2mass_info_file.py again for this field"%(hatid, field), all_nodes=True)
+			return save_and_return(None, hatid, save_full_lc)
+		elif not hatid in twomass_info_for_field[field]:
+			logprint("                    !             %s  !  No twomass information loaded.\n\t\t\t You'll need to run make_2mass_info_file.py again for this hatid"%(hatid), all_nodes=True)
+			return save_and_return(None, hatid,  save_full_lc)
+		elif twomass_info_for_field[field][hatid] is None:
+			logprint("                    !             %s  !  No twomass information is available!", all_nodes=True)
+			return save_and_return(None, hatid,  save_full_lc)
+		else:
+			twomass_dat = twomass_info_for_field[field][hatid]
 	# Load keylist for field
 	if keylist_dat is None:
 		logprint("                                  %s  >  getting keylist data..."%(hatid), all_nodes=True)
-		keylist = load_keylist(field)
-		if keylist is None:
+		keylist_dat = load_keylist(field)
+		if keylist_dat is None:
 			logprint("                    !             %s  !  KEYLIST is no good :("%(hatid), all_nodes=True)
 			
 			return save_and_return(None, hatid,  save_full_lc)
 
 	logprint("                                  %s  >  getting twomass data..."%(hatid), all_nodes=True)
 
-	# Obtain twomass/color data for hatid
-	if twomass_dat is None:
-		if not hatid in all_twomass_data:
-			logprint("                    !             %s  !  No twomass information loaded.\n\t\t\t You'll need to run make_2mass_info_file.py again for this hatid"%(hatid), all_nodes=True)
-			return save_and_return(None, hatid,  save_full_lc)
-		elif all_twomass_data[hatid] is None:
-			logprint("                    !             %s  !  No twomass information is available!", all_nodes=True)
-			return save_and_return(None, hatid,  save_full_lc)
-		else:
-			twomass_dat = all_twomass_data[hatid]
+	
 
 	# Load tfalc lightcurve; add twomass/keylist data to it.
 	logprint("                                  %s  >  loading lc..."%(hatid), all_nodes=True)
-	lc = load_full_tfalc(get_raw_lc_fname(hatid), keylist, twomass_dat)
+	lc = load_full_tfalc(get_raw_lc_fname(hatid), keylist_dat, twomass_dat)
 	if lc is None: 
 		logprint("                    !             %s  !  lc was none!"%(hatid), all_nodes=True)
 		return save_and_return(None, hatid, save_full_lc)
 
 	logprint("                                  %s  >  pruning out bad inds..."%(hatid), all_nodes=True)
-
+	lc['hatid'] = hatid
 	# Prune out missing keylist datapoints:
 	lc = prune_out_bad_inds(lc)
 
@@ -1005,8 +1046,10 @@ def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_da
 		logprint("                    !             %s  !  too few observations!!"%(hatid), all_nodes=True)
 		return save_and_return(None, hatid, save_full_lc)
 	
+	logprint(logprint("                                  %s  >  %d observations are OK!"%(hatid, len(lc['BJD'])), all_nodes=True))
 	# To save space, once the pickled lightcurve is generated, the original tfalc is discarded.
-	if delete_raw_lc:
+	if delete_raw_lc and RUNNING_ON_DELLA:
+		logprint("                                  %s  >  DELETING tfalc LC."%(hatid), all_nodes=True)
 		os.remove(get_raw_lc_fname(hatid))
 
 	return save_and_return(lc, hatid, save_full_lc)
@@ -1022,10 +1065,22 @@ def rexists(sftp, path):
         raise
     else:
         return True
+def get_field_ids(field, sftp):
+	if not field in field_info: return None
+	field_dir = field_info[field]
+	if not rexists(sftp, field_dir): return None
+	ids = []
+	for fname in sftp.listdir(field_dir):
+		if not 'HAT' in fname: continue
+		if not '.tfalc' in fname: continue
+		if len(fname) != 21: continue
+		ids.append(fname[:15])
+	return ids
 
-def get_field_ids(field):
-	return [ hatid for hatid in hatid_field_list if hatid_field_list[hatid] == field ]
-
+def is_gcvs(hatid):
+	return ( hatid in gcvs_info )
+#def get_field_ids(field):
+#	return [ hatid for hatid in hatid_field_list if hatid_field_list[hatid] == field ]
 def get_available_field_ids(field):
 
 	dirname = "%s/%s"%(LCCACHE, field)
@@ -1049,9 +1104,6 @@ def print_list(l):
 		else: pstr = "%s%s,"%(pstr, item)
 
 	return pstr
-def get_field_of(hatid):
-	if not hatid in hatid_field_list: return None
-	return hatid_field_list[hatid]
 
 def get_remote_tfalc_filename(hatid):
 	field = get_field_of(hatid)
@@ -1119,7 +1171,6 @@ def load_keylist(field):
 	keylist = pickle.load(gzip.open(klfname_l, 'rb'))
 
 	return keylist
-
 def make_hatid_list(field, sftp=None, ssh=None):
 	# Get list of hatids that are in this field
 	close_it = False
@@ -1188,7 +1239,6 @@ def make_hatid_lists(fields = None, sftp=None, ssh=None):
 get_2mass_binary = lambda field : "/home/jhoffman/2massread"
 get_2mass_data_dir = lambda field : "/H/CAT/2MASS/2MASS_JH_AP/data"
 get_2mass_shell_script = lambda field : "/home/jhoffman/color-file.sh"
-
 def open_ssh_connection():
 	logprint("  open_ssh_connection: in function.", all_nodes=True)
 	config = SSHConfig()
@@ -1212,26 +1262,52 @@ def conv(r, t):
 	if isinstance(t, str): return r
 	else: return t(r)
 
-def get_2mass_data_for_hatid(hatid, client, field=None):
-	if field is None:
-		field = get_field_of(hatid)
+def get_2mass_data_for_hatid_over_ssh(hatid, sftp):
+	command = "/home/jhoffman/2massread --cat %s -g %s"%(get_2mass_data_dir(None), hatid)
+	stdin, stdout, stderr = sftp.exec_command(command)
+	ncols = len(twomass_dt_arr)
 
-	stdin, stdout, stderr = client.exec_command('%s --cat %s -g %s'%(get_2mass_binary(field), get_2mass_data_dir(field), hatid))
-
-	lines = []
-	for line in stdout:
-		lines.append(line.strip('\n'))
+	line = stdout.read()
 	try:
-		results = lines[1].split()
+		cols = line.split('\n')[1].split()
 	except:
-		print "Warning, %s 2mass data could not be obtained."%(hatid)
+		print "Can't get line..."
 		return None
-	assert(len(results) == len(twomass_dt_arr))
-	RES = [ (results[i],) + twomass_dt_arr[i] for i in range(len(results)) ]
-	#print RES[0]
-	results_dict = { c : conv(r, t) for r, c, t in RES }
 	
-	return results_dict
+	#print len(cols)
+	# Is the number of columns ok?
+	if len(cols) != ncols: 
+		print "Len cols is %d, but ncols is %d"%(len(cols), ncols)
+		return None
+		
+
+	# Is the value of each column ok?	
+	col_is_bad = False
+	for j,col in enumerate(cols):
+		name, dt = twomass_dt_arr[j]
+		try:
+			conv(col, dt)
+		except:
+			print "col %s is 'bad'"%(name), col
+			col_is_bad = True
+			break
+	if col_is_bad:
+		return None
+
+	twomass_dict = {}
+	for j,col in enumerate(cols):
+		name, dt = twomass_dt_arr[j]
+		twomass_dict[name] = conv(cols[j], dt) 
+
+	return twomass_dict
+
+def get_2mass_data_for_hatid(hatid):
+	field = get_field_of(hatid)
+	if field is None:
+		logprint("Warning (get_2mass_data): %s does not have a field."%(field))
+		return None
+	return twomass_info_for_field[field][hatid]
+	
 def make_2mass_data_for_field(field, client, sftp):
 
 	#if os.path.exists(get_local_2mass_fname(field)):
@@ -1266,19 +1342,19 @@ def is_candidate(scores, min_score, min_frac_above_min_score):
 def load_bad_ids(iteration):
 	BAD_IDS = []
 	for ID in bad_ids: BAD_IDS.append(ID)
-	if iteration == 1: return BAD_IDS
-	for i in range(1,iteration):
+	if iteration == 0: return BAD_IDS
+	for i in range(0,iteration):
 		bad_ids_ = pickle.load(open(get_bad_ids_fname(i), 'rb'))
 		for ID in bad_ids_: BAD_IDS.append(ID)
 	return BAD_IDS
-
-def get_hatid_field_list():
+def get_hatid_field_list(fields):
 	logprint("Getting hatid field list!", all_nodes=True)
-	for field in all_fields:
+	ssh, sftp = open_ssh_connection()
+	for field in fields:
 		fname = get_hatids_in_field_fname(field)
 		if not os.path.exists(fname):
 			logprint("List of HATID's for field %s does not yet exist. Making one!"%(field), all_nodes=True)
-			res = make_hatid_list(field)
+			res = make_hatid_list(field, sftp=sftp)
 			if res is None: 
 				logprint("Oh wait, we don't know where that field is on the system yet!", all_nodes=True)
 				continue
@@ -1288,17 +1364,19 @@ def get_hatid_field_list():
 		for hatid in hatids:
 			hatid_field_list[hatid] = field
 	pickle.dump(hatid_field_list, open(hatid_field_list_fname, 'wb'))
+	close_ssh_connection(ssh, sftp)
+#if not os.path.exists(hatid_field_list_fname):
+#	get_hatid_field_list(fields_to_analyze)
 
-if not os.path.exists(hatid_field_list_fname):
-	get_hatid_field_list()
+#print "miscutils: loading hatid_field_list.."
+#hatid_field_list = pickle.load(open(hatid_field_list_fname, 'rb'))
 
-hatid_field_list = pickle.load(open(hatid_field_list_fname, 'rb'))
 
-#all_twomass_data = pickle.load(gzip.open("twomass_info.pklz", 'rb'))
-
-get_raw_lc_fname = lambda hatid : "%s/%s/%s.tfalc"%(LCCACHE, get_field_of(hatid), hatid)
-get_lc_fname = get_raw_lc_fname
 load_lightcurve = load_full_tfalc_from_scratch
+
+print "miscutils: loading twomass_info_for_fields.."
+twomass_info_for_field = { field : twomass_info_file(field) for field in fields_to_analyze }
+
 
 def get_bagged_samples(Categories, size):
 	Samples = {}
@@ -1400,7 +1478,7 @@ class BaggedModel:
 					fname = "%s_clfr%d.pkl"%(root_name,i)
 					pickle.dump(clfr, open(fname, 'wb'))
 					clfr_fnames.append(fname)
-				pickle.dump(clfr_fnames, bagged_model_clfrs_fname)
+				pickle.dump(clfr_fnames, open(bagged_model_clfrs_fname, 'wb'))
 
 			pickle.dump(filenames, open(bagged_model_fname, 'wb'))
 
@@ -1424,11 +1502,13 @@ class BaggedModel:
 
 		# if there are also additional classifiers, load them too!
 		if os.path.exists(bagged_model_clfrs_fname):
-			clfr_fnames = pickle.load(bagged_model_clfrs_fname)
-			self.clfrs_ = [ pickle.load(fname) for fname in clfr_fnames ]
+			clfr_fnames = pickle.load(open(bagged_model_clfrs_fname, 'rb'))
+			self.clfrs_ = [ pickle.load(open(fname, 'rb')) for fname in clfr_fnames ]
 			self.nclasses_ = len(self.clfrs_)
 			self.composite_prediction_ = lambda ModelPreds, Class : \
 											self.clfrs_[Class].predict_proba(ModelPreds)[0][1] \
 											/ sum( [ clfr.predict_proba(ModelPreds)[0][1] for clfr in self.clfrs_ ] )
 
 		return True
+
+

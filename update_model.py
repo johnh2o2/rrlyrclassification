@@ -19,7 +19,6 @@ import utils.readhatlc as rhlc
 from settings import *
 import cPickle as pickle
 from mpi4py import MPI
-import make_catalog_of_hatids as mch
 
 fit_model_weights = True
 
@@ -30,13 +29,12 @@ rank = comm.Get_rank()
 ROOT = (rank == 0)
 
 # What iteration are we on?
-iteration = get_iteration_number() 
+iteration = get_iteration_number() + 1 # we're making the next model!
 logprint("Updating model; iteration %d"%(iteration))
 
 # Get the labeled HATIDs.
 logprint("Loading labeled HATIDs")
 hatids, categories = LoadLabeledHatIDs()
-
 
 # Now distribute the workload to load/make the features...
 batch_size = 10
@@ -80,7 +78,7 @@ if ROOT:
 		All_Features = LoadAllFeatures(hatids)
 else:
 	msl.slave(LoadAllFeatures)
-	
+
 def process(feats):
 	logprint("  Cleaning features...")
 	feats = CleanFeatures(feats)
@@ -100,26 +98,36 @@ def process(feats):
 
 
 for Iter in range(num_iterations):
-	if rank > num_bags: break # right now we're operating on a 1 core/bag system.
+	if rank > num_bags: break # right now we're operating on a 1 bag/core system.
 	if ROOT:
 
 		bags = get_bagged_samples(categories, num_bags + 1)
 		for i,b in enumerate(bags):
 			ncats = len(np.unique([ categories[ID] for ID in b ]))
 			if ncats < 2: raise Exception("bag number %d only has one class!"%(i))
+
+			# First and last bag are reserved for:
+			#    first bag :  
+			#    last bag  : 
 			if i == 0 or i == len(bags) - 1: continue
 			FFs = { ID : All_Features[ID] for ID in b }
 			comm.send(obj=FFs, dest=i, tag=0)
 
+		# Features to test this particular bagged model.
 		Testing_Features = { ID : All_Features[ID] for ID in bags[-1] }
+
+		# (This is the list of full features for the ROOT node)
 		Full_Features = { ID : All_Features[ID] for ID in bags[0] }
+
+		# Features to use for testing the SVM decision-maker
 		SVM_Features = { ID : All_Features[ID] for ID in bags[1] }
 
-		# Get cross-validation data!
+		# Get cross-validation features!
 		logprint("Generating cross validation data", all_nodes=True)
 		Testing_Features, Testing_MagFeatures, Testing_OtherFeatures, MagIDs, MagKeylist, \
 		Testing_MagObservations, Testing_MagLabels, OtherKeylist, Testing_OtherObservations = process(Testing_Features)
 
+		# Get the SVM decision-maker training features
 		logprint("Generating SVM training data")
 		SVM_Features, SVM_MagFeatures, SVM_OtherFeatures, MagIDs, MagKeylist, \
 		SVM_MagObservations, SVM_MagLabels, OtherKeylist, SVM_OtherObservations = process(SVM_Features)
@@ -281,7 +289,7 @@ AUC (Both)  = %.3f +/- %.3f\n\t\
 			comp_scalers.append(comps)
 
 		BaggedMagModel = BaggedModel(mag_scalers, mag_models)
-		print np.array(Y_svm_train).shape, np.array(X_svm_train_mag).shape, np.array(X_svm_train_other).shape, np.array(X_svm_train_comp).shape
+		#print np.array(Y_svm_train).shape, np.array(X_svm_train_mag).shape, np.array(X_svm_train_other).shape, np.array(X_svm_train_comp).shape
 		if fit_model_weights: BaggedMagModel.fit(X_svm_train_mag, Y_svm_train)
 
 		BaggedOtherModel = BaggedModel(other_scalers, other_models)
@@ -290,9 +298,17 @@ AUC (Both)  = %.3f +/- %.3f\n\t\
 		BaggedCompModel = BaggedModel(comp_scalers, comp_models)
 		if fit_model_weights: BaggedCompModel.fit(X_svm_train_comp, Y_svm_train)
 
-		bagged_mag_model_rootname = "%s/bagged_mag_clfr_iter%04d"
-		bagged_other_model_rootname = "%s/bagged_other_clfr_iter%04d"
-		bagged_comp_model_rootname = "%s/bagged_comp_clfr_iter%04d"
+		bagged_mag_model_rootname = "%s/bagged_mag_clfr_iter%04d"%(model_output_dir,iteration)
+		bagged_other_model_rootname = "%s/bagged_other_clfr_iter%04d"%(model_output_dir, iteration)
+		bagged_comp_model_rootname = "%s/bagged_comp_clfr_iter%04d"%(model_output_dir, iteration)
+
+		# Save these models!!
+		# TODO: re-train on ALL labeled data (these are only trained on MOST of the labeled data for
+		#       cross-validation purposes.)
+		logprint("Saving bagged model.")
+		BaggedCompModel.save(bagged_comp_model_rootname)
+		BaggedMagModel.save(bagged_mag_model_rootname)
+		BaggedOtherModel.save(bagged_other_model_rootname)
 
 		JunkScaler = lambda x : x
 
@@ -349,7 +365,7 @@ if use_matplotlib and ROOT:
 	ax_o.set_title("Other data")
 	ax_b.set_title("ALL data")
 	f.suptitle("Bagged model (%d bags)"%(num_bags))
-	plt.show()
+	plt.show(block=True)
 
 
 if ROOT:
@@ -366,7 +382,7 @@ Comp:  %.3f +/- %.5f\n\t\
 	np.mean(aucs_other), np.std(aucs_other),
 	np.mean(aucs_comp), np.std(aucs_comp))
 	
-	pickle.dump(("%s.pkl"%(bagged_other_model_rootname),) + ("%s.pkl"%(bagged_mag_model_rootname),) + \
+	pickle.dump(("%s"%(bagged_other_model_rootname),) + ("%s"%(bagged_mag_model_rootname),) + \
 			(skip_features, mag_features,vartypes_to_classify, OtherKeylist, MagKeylist), 
-			open(get_classifier_fname(iteration + 1), 'wb'))
+			open(get_classifier_fname(iteration), 'wb'))
 

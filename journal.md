@@ -125,3 +125,48 @@ MB/sec) with our 1-Gbit links.
 # August 17
 
 * Wrote script to download twomass information for all hatids; runs `nthreads` processes on `phn1`. This finished last night!
+* Strange problem when trying to create twomass info file for gcvs sources -- almost every gcvs crossmatched source was missing from the twomass info files..
+	* I was worried that this meant I had somehow deleted all of the gcvs tfalc files on phn1...
+	* I checked to see if this was true by testing one of the missing hatids:
+```
+jhoffman@phn1:/nfs/phn15/ar1/H/4KRED/4KAP_LC/062_PR5_D20$ ls *HAT-094-0001548*
+HAT-094-0001548.epdlc  HAT-094-0001548.epdlog  HAT-094-0001548.rlc  HAT-094-0001548.tfalc
+```
+	* So, it seems like this is *not* the case; somehow the gcvs sources were removed from the twomass info files. How??!?
+	* The twomass info for these sources IS there if you run the `2massread` binary on them.
+	* Wrote script to take results from `2massread` binary and put them back in the twomass info files... hopefully this should solve the problem.
+
+# August 23
+* Came across lots of empty `hatids_in_field[].list` files; e.g. 258.
+	* Empty directory in corresponding tigress directory
+	* Empty phn1 directory (`/nfs/phn1/ar2/EDRIVE/EDRIVE3/LC/258`).
+		* **ALL GOOD**.
+* Should I make a "pseudo"-field called gcvs and move all gcvs sources to that directory? That way there's no ambiguity and I think everything would be a lot easier...then again maybe it's best to preserve the filestructure?
+
+# August 25
+* OK, the following seems to work fine on my mac:
+	`mpirun -n 4 python create_initial_labeled_hatids.py`
+	`mpirun -n 4 python update_model.py`
+* The PROBLEM is that `get_candidates.py` can't load the model. I need to make sure
+	1. That the `update_model.py` script ends by training the model on ALL hatids
+	2. That the `update_model.py` script saves this bagged model in a consistent way that can be loaded later on.
+* I also need to document `update_model.py` via comments...that thing is a bit cryptic.
+
+#September 10
+* Saved bagged models, but these are not trained on the COMPLETE set of labeled data (basically I save them in the middle of cross validation)
+	* This will need to be changed, but I'm just trying to get the pipeline to WORK for now.
+* The 145 base in the /jhoffman/G145 directory (or whatever) has a lot of bad symlinks. I had picked this field arbitrarily, and the keylist couldn't be found since the BASE directory was not there!! The correct location is "/nfs/phn1/ar2/EDRIVE/EDRIVE51/ANL/145/BASE", and I fixed this sloppily by adding an ``if`` condition in the ``get_remote_keylist_dir`` function in ``settings.py``.
+	* **This needs to be looked into more** : how many keylists are missing because of this?
+* ``score_hatids`` function was outdated and only used other/mag models and not composite models. I 
+* Ran the ``get_candidates.py`` script on the first 10 hatids from 145; ALL OF THEM HAVE SCORES OF **EXACTLY** 0.5!!!!
+	* This is obviously a problem.
+	* Tested with GCVS sources, STILL A PROBLEM
+	* **realized** generate_features doesn't **return** feature vector. Made ``feature_vector`` function that does.
+	* **NOT THE PROBLEM** generate_features doesn't have to return feature vector. 
+	* It's likely because you aren't giving the model the appropriate translation of the feature dict.
+
+# TODO
+* Collect all relevant non-lc files into a single tarball
+* Write code to get `hatids_in_field_gcvs.list`
+* Test all aspects of the pipeline.
+* Write script to setup directory structure once scratch is erased. (This should also work on remote systems too)
