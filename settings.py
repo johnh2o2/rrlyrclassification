@@ -10,9 +10,11 @@ RUNNING_ON_DELLA = False
 model_prefix = "rrab_v0"
 fields_to_analyze = [ '145', 'gcvs' ]
 min_score = 0.05
-min_frac_above_min_score = 0.3
+min_frac_above_min_score = 0.1
+nmc = 5000
 ssh_host_name = 'phn1'
 VERBOSE = True
+NFILES_MAX = None
 
 if RUNNING_ON_DELLA:
 	parent_dir = '/home/jah5/rrlyr_search/rrlyrclassification'
@@ -23,8 +25,9 @@ else:
 	DYLD_LIBRARY_PATH = '/opt/local/lib'
 	SCRATCH = "%s/SCRATCH"%(parent_dir)
 
-	NFILES_MAX = 10
-	min_score = -1.0
+	#NFILES_MAX = 10
+	#min_score = -1.0
+	#min_score = 0.05
 
 remote_keylist_fname = lambda field : '/nfs/phn11/ar1/H/BIGPROJ/hatuser/2007_hatnet_phot/G%s/BASE/keylist.txt'%(field)
 
@@ -77,7 +80,7 @@ mag_features = [ 'R-V', 'I-V', 'J-V', 'H-V', 'K-V' ]
 
 num = None
 min_ndets = 20
-nfolds = 10
+nfolds = 50
 cutoff = 0.05
 overwrite = False
 

@@ -8,3 +8,4 @@ build/
 SCRATCH/
 hatids_in_field_lists/
 hatid_field_list.pkl
+*png

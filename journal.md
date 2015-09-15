@@ -164,6 +164,18 @@ HAT-094-0001548.epdlc  HAT-094-0001548.epdlog  HAT-094-0001548.rlc  HAT-094-0001
 	* **realized** generate_features doesn't **return** feature vector. Made ``feature_vector`` function that does.
 	* **NOT THE PROBLEM** generate_features doesn't have to return feature vector. 
 	* It's likely because you aren't giving the model the appropriate translation of the feature dict.
+	* **FOUND THE PROBLEM**
+		* this is a model-persistence issue.
+		* Doing a save/load in ``update_model.py`` generated the exact same problem.
+* Trying to use ``dill`` python library to see if that fixes the issue (this will likely need to be installed on Della)
+* Problem is that the composite_prediction function was not doing what it was supposed to.
+	* Loading of models, scalers, SVM's are fine (except for maybe the SVM's)
+	* Doing away with the SVM's in favor of just a simple mean score don't appreciably change things.
+
+#September 11
+* Everything runs now, but the model doesn't seem to perform as well as advertised by cross-validation...
+	* Even doing away with MC and using the GCVS sources, the model only picks up something like 3/4 of the GCVS RRlyr
+
 
 # TODO
 * Collect all relevant non-lc files into a single tarball

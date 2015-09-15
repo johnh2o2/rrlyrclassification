@@ -21,6 +21,7 @@ size = comm.Get_size()
 rank = comm.Get_rank()
 ROOT = (rank == 0)
 
+
 logprint(" get_candidates: MPI: rank = %d size = %d"%(rank, size))
 
 # What iteration are we on?
@@ -41,8 +42,9 @@ labeled_hatids = np.loadtxt(get_labeled_hatids_fname(), dtype=np.dtype([('hatid'
 #print len(labeled_hatids)
 # Get HAT ID's that are located in the fields that we're analyzing (and that aren't already labeled)
 #hatids = [ hatid for hatid in hatid_field_list if get_field_of(hatid) in fields_to_analyze and not hatid in labeled_hatids ]
-#hatids = [ hatid for hatid in hatid_field_list if get_field_of(hatid) in fields_to_analyze and hatid in labeled_hatids ]
-hatids = labeled_hatids
+
+
+#hatids = labeled_hatids 
 #print len(hatids)
 
 if not NFILES_MAX is None and len(hatids) > NFILES_MAX:
@@ -94,12 +96,12 @@ if ROOT:
 	print "%d candidates"%(len(CANDIDATES))
 
 	# Save results
-	#pickle.dump(BAD_IDS, open(get_bad_ids_fname(iteration), 'wb'))
-	#pickle.dump(CANDIDATES, open(get_candidate_fname(iteration), 'wb'))
+	pickle.dump(BAD_IDS, open(get_bad_ids_fname(iteration), 'wb'))
+	pickle.dump(CANDIDATES, open(get_candidate_fname(iteration), 'wb'))
 
 else:
 	msl.slave(lambda hatid : (hatid, generate_features(hatid, field=hatid_field_list[hatid])))#, keylist=keylists[hatid_field_list[hatid]])))
-	msl.slave(lambda hatid : (hatid, test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score, iteration)))
+	msl.slave(lambda hatid : (hatid, test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score, iteration, N=nmc)))
 
 
 logprint("               : done.")

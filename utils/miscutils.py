@@ -12,7 +12,7 @@ from settings import *
 import sys, os, re, gzip
 import fastlombscargle as lsp
 from os.path import exists
-import cPickle as pickle
+import dill as pickle
 import readhatlc as rhlc
 from mpi4py import MPI
 import masterslave as msl
@@ -23,7 +23,7 @@ rank = comm.Get_rank()
 ROOT = (rank == 0)
 
 
-
+HP = pickle.HIGHEST_PROTOCOL
 
 def logprint(m, all_nodes=False):
 	if VERBOSE and all_nodes: print "node %d: %s "%(comm.rank, m)
@@ -1400,6 +1400,13 @@ def get_bagged_samples(Categories, size):
 		bags.append(bag)
 
 	return bags
+
+def composite_prediction(ModelPreds, Class, clfrs=None):
+	if clfrs is None: 
+		#return np.mean([ M[Class] for M in ModelPreds ])
+		return max(M[Class] for M in ModelPreds)
+	return clfrs[Class].predict_proba(np.ravel(ModelPreds))[0][1] / sum( [ clfr.predict_proba(np.ravel(ModelPreds))[0][1] for clfr in clfrs ] )
+
 class BaggedModel:
 	def __init__(self, scalers=None, models=None, w=None):
 
@@ -1410,7 +1417,7 @@ class BaggedModel:
 		self.clfrs_ = None
 
 		# weight the models equally by default
-		self.composite_prediction_ = lambda ModelPreds, Class : np.mean(ModelPreds)
+		#self.composite_prediction_ = lambda ModelPreds, Class : np.mean(ModelPreds)
 
 	def get_model_preds_(self, X):
 			
@@ -1433,10 +1440,10 @@ class BaggedModel:
 	def predict_proba(self, X):
 		
 		Ys = self.get_model_preds_(X)
-	
+
 		Y = [ ]
 		for i in range(len(X)):
-			Y.append([ self.composite_prediction_(np.ravel(Ys[i]), k) for k in range(self.nclasses_) ])
+			Y.append([ composite_prediction(Ys[i], k) for k in range(self.nclasses_) ])
 		return Y
 
 	def fit(self, X, Y):
@@ -1465,9 +1472,14 @@ class BaggedModel:
 				if not self.scalers is None: s = self.scalers[i]
 				else: s = None
 
-				fname = "%s_ms%d.pkl"%(root_name,i)
-				pickle.dump((s, m), open(fname, 'wb') )
-				filenames.append(fname)
+				fname_s = "%s_s%d.pkl"%(root_name,i)
+				fname_m = "%s_m%d.pkl"%(root_name,i)
+				fname_sm = "%s_sm%d.pkl"%(root_name,i)
+				pickle.dump(s, open(fname_s, 'wb'), HP )
+				pickle.dump(m, open(fname_m, 'wb'), HP )
+				pickle.dump((fname_s, fname_m), open(fname_sm, 'wb'), HP)
+
+				filenames.append(fname_sm)
 			bagged_model_fname = "%s.pkl"%(root_name)
 			
 			# Save additional classifiers if there are any
@@ -1476,11 +1488,11 @@ class BaggedModel:
 				clfr_fnames = []
 				for clfr in self.clfrs_:
 					fname = "%s_clfr%d.pkl"%(root_name,i)
-					pickle.dump(clfr, open(fname, 'wb'))
+					pickle.dump(clfr, open(fname, 'wb'), HP)
 					clfr_fnames.append(fname)
-				pickle.dump(clfr_fnames, open(bagged_model_clfrs_fname, 'wb'))
+				pickle.dump(clfr_fnames, open(bagged_model_clfrs_fname, 'wb'), HP)
 
-			pickle.dump(filenames, open(bagged_model_fname, 'wb'))
+			pickle.dump(filenames, open(bagged_model_fname, 'wb'), HP)
 
 		else:
 			raise Exception("Can't save an empty BaggedModel (models == None)")
@@ -1496,7 +1508,11 @@ class BaggedModel:
 		
 		# Load scalers and models
 		for f in filenames:
-			s, m = pickle.load(open(f, 'rb'))
+			fname_s, fname_m = pickle.load(open(f, 'rb'))
+
+			s = pickle.load(open(fname_s,'rb'))
+			m = pickle.load(open(fname_m,'rb'))
+
 			self.scalers.append(s)
 			self.models.append(m)
 
@@ -1505,9 +1521,7 @@ class BaggedModel:
 			clfr_fnames = pickle.load(open(bagged_model_clfrs_fname, 'rb'))
 			self.clfrs_ = [ pickle.load(open(fname, 'rb')) for fname in clfr_fnames ]
 			self.nclasses_ = len(self.clfrs_)
-			self.composite_prediction_ = lambda ModelPreds, Class : \
-											self.clfrs_[Class].predict_proba(ModelPreds)[0][1] \
-											/ sum( [ clfr.predict_proba(ModelPreds)[0][1] for clfr in self.clfrs_ ] )
+			#self.composite_prediction_ = self.composite_prediction
 
 		return True
 

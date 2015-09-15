@@ -8,9 +8,10 @@ import utils.featureutils as futils
 import settings
 import cPickle as pickle
 
+visualize=True
 # What iteration are we on?
 iteration = mutils.get_iteration_number()
-
+#iteration = 3
 # Get list of candidate HAT ID's:
 candidate_fname = settings.get_candidate_fname(iteration)
 candidate_results_fname = settings.get_candidate_results_fname(iteration)
@@ -30,14 +31,27 @@ if len(candidate_ids) == 0:
 # Fetch filenames of the gzipped csv lightcurves
 candidate_filenames = [ mutils.get_lc_fname(ID) for ID in candidate_ids ]
 
+
 # Add a 'hatid' if there isn't already one.
+'''
+skip_ids = []
 for fname,ID in zip(candidate_filenames, candidate_ids):
-	lc = pickle.load(gzip.open(fname, 'rb'))
+	print fname, ID
+	try:
+		lc = pickle.load(gzip.open(fname, 'rb'))
+	except:
+		print "can't open LC for %s"%(ID)
+		skip_ids.append(ID)
 	if not 'hatid' in lc:
 		lc['hatid'] = ID
 	pickle.dump(lc, gzip.open(fname, 'wb'))
 
+for ID in skip_ids:
+	i = candidate_ids.index(ID)
+	candidate_ids.pop(i)
+	candidate_filenames.pop(i)
 
+'''
 # Find the files that aren't in the data directory yet:
 missing_ids = [ ID for fname,ID in zip(candidate_filenames, candidate_ids) if not os.path.exists(fname) ]
 if len(missing_ids) > 0:
@@ -46,18 +60,18 @@ if len(missing_ids) > 0:
 
 # Fetch the LC's from the HAT (HTTP) server
 #mutils.fetch_lcs(missing_ids)
+if visualize:
+	# Labels that the user can give to each lightcurve
+	flags = [ 'RRab', 'Not-variable', 'Variable-not-RRab' ] 
+	shortcuts = { 'q' : 'RRab', 'w' : 'Not-variable', 'e' : 'Variable-not-RRab' } # hit these keys on the keyboard to set each of the labels...
 
-# Labels that the user can give to each lightcurve
-flags = [ 'RRab', 'Not-variable', 'Variable-not-RRab' ] 
-shortcuts = [ 'q','w','e' ] # hit these keys on the keyboard to set each of the labels...
-
-# Start the visualizer
-root = Tk()
-root.geometry('+250+80') 
-root.wm_title("Label RR Lyrae candidates")
-app = Visualizer(root, candidate_filenames, 
-					logfile=candidate_results_fname, flag_shortcuts=shortcuts, flags=flags, jah=True)
-root.mainloop()
+	# Start the visualizer
+	root = Tk()
+	root.geometry('+250+80') 
+	root.wm_title("Label RR Lyrae candidates")
+	app = Visualizer(root, candidate_filenames, 
+						logfile=candidate_results_fname, flag_shortcuts=shortcuts, flags=flags, jah=True)
+	root.mainloop()
 
 
 # Now read in and interpret the results
@@ -67,13 +81,14 @@ classification_results = {}
 while True:
 	line = f.readline()
 	if line == '': break
-	line.replace('\n', '')
+	line = line.replace('\n', '')
 
 	splits = line.split(' ')
 	assert(len(splits) <= 2)
 	ID = splits[0]
 	if len(splits) > 1: 
 		CLASS = splits[1]
+		print CLASS
 		if CLASS != 'RRab': CLASS = "none"
 		else: CLASS = "RRAB"
 	else: CLASS = None
@@ -86,11 +101,14 @@ mutils.logprint(" label_candidates : done.")
 mutils.logprint(" label_candidates : Now saving the results!")
 for ID in classification_results:
 	CLASS = classification_results[ID]
-	if CLASS is None: continue
 
-	if ID in labeled_ids:
-		if CLASS != categories[ID]:
-			print "WARNING: ID '%s' is already labeled as '%s', but the labeler says it's a '%s'. The labeler will take precedence here!"%(ID, categories[ID], CLASS)
-			categories[ID] = CLASS
+	if CLASS is None: 
+		continue
+	if not ID in categories: 
+		categories[ID] = CLASS
+		continue
+	if CLASS != categories[ID]:
+		print "WARNING: ID '%s' is already labeled as '%s', but the labeler says it's a '%s'. The labeler will take precedence here!"%(ID, categories[ID], CLASS)
+		categories[ID] = CLASS
 
 futils.SaveLabeledHatIDs(categories, iteration)
