@@ -19,9 +19,8 @@ import utils.readhatlc as rhlc
 from settings import *
 import cPickle as pickle
 from mpi4py import MPI
-import make_catalog_of_hatids as mch
 
-fit_model_weights = True
+fit_model_weights = False
 
 # Get rank and size of mpi process
 comm = MPI.COMM_WORLD
@@ -30,13 +29,12 @@ rank = comm.Get_rank()
 ROOT = (rank == 0)
 
 # What iteration are we on?
-iteration = get_iteration_number() 
+iteration = get_iteration_number() + 1 # we're making the next model!
 logprint("Updating model; iteration %d"%(iteration))
 
 # Get the labeled HATIDs.
 logprint("Loading labeled HATIDs")
 hatids, categories = LoadLabeledHatIDs()
-
 
 # Now distribute the workload to load/make the features...
 batch_size = 10
@@ -80,7 +78,7 @@ if ROOT:
 		All_Features = LoadAllFeatures(hatids)
 else:
 	msl.slave(LoadAllFeatures)
-	
+
 def process(feats):
 	logprint("  Cleaning features...")
 	feats = CleanFeatures(feats)
@@ -100,31 +98,44 @@ def process(feats):
 
 
 for Iter in range(num_iterations):
-	if rank > num_bags: break # right now we're operating on a 1 core/bag system.
+	if rank > num_bags: break # right now we're operating on a 1 bag/core system.
 	if ROOT:
 
-		bags = get_bagged_samples(categories, num_bags + 1)
+		# An extra bag for the SVM decision maker 
+		if fit_model_weights:
+			bags = get_bagged_samples(categories, num_bags + 2)
+		else:
+			bags = get_bagged_samples(categories, num_bags + 1)
+
 		for i,b in enumerate(bags):
 			ncats = len(np.unique([ categories[ID] for ID in b ]))
 			if ncats < 2: raise Exception("bag number %d only has one class!"%(i))
+
+			# First and last bag are reserved for:
+			#    first bag :  The feature bag that Root uses
+			#    last bag  :  The feature bag that's used for testing/cross-validation
 			if i == 0 or i == len(bags) - 1: continue
 			FFs = { ID : All_Features[ID] for ID in b }
 			comm.send(obj=FFs, dest=i, tag=0)
 
+		# Features to test this particular bagged model.
 		Testing_Features = { ID : All_Features[ID] for ID in bags[-1] }
-		Full_Features = { ID : All_Features[ID] for ID in bags[0] }
-		SVM_Features = { ID : All_Features[ID] for ID in bags[1] }
 
-		# Get cross-validation data!
+		# (This is the list of full features for the ROOT node)
+		Full_Features = { ID : All_Features[ID] for ID in bags[0] }
+
+		# Get cross-validation features!
 		logprint("Generating cross validation data", all_nodes=True)
 		Testing_Features, Testing_MagFeatures, Testing_OtherFeatures, MagIDs, MagKeylist, \
 		Testing_MagObservations, Testing_MagLabels, OtherKeylist, Testing_OtherObservations = process(Testing_Features)
 
-		logprint("Generating SVM training data")
-		SVM_Features, SVM_MagFeatures, SVM_OtherFeatures, MagIDs, MagKeylist, \
-		SVM_MagObservations, SVM_MagLabels, OtherKeylist, SVM_OtherObservations = process(SVM_Features)
-
-
+		if fit_model_weights:
+			# Features to use for testing the SVM decision-maker
+			SVM_Features = { ID : All_Features[ID] for ID in bags[1] }
+			# Get the SVM decision-maker training features
+			logprint("Generating SVM training data")
+			SVM_Features, SVM_MagFeatures, SVM_OtherFeatures, MagIDs, MagKeylist, \
+			SVM_MagObservations, SVM_MagLabels, OtherKeylist, SVM_OtherObservations = process(SVM_Features)
 		
 	else:
 		status = MPI.Status()
@@ -244,11 +255,7 @@ AUC (Both)  = %.3f +/- %.3f\n\t\
 
 		nmodels = 1
 
-		X_svm_train_other = SVM_OtherObservations
-		X_svm_train_mag = SVM_MagObservations
-		X_svm_train_comp = ZipAndMerge(SVM_MagObservations, SVM_OtherObservations)
-		Y_svm_train = SVM_MagLabels
-
+		# Now train on everything (except for the testing data)
 		X_comp_train = ZipAndMerge(MagObservations, OtherObservations)
 		X_comp_test = ZipAndMerge(Testing_MagObservations, Testing_OtherObservations)
 
@@ -266,6 +273,8 @@ AUC (Both)  = %.3f +/- %.3f\n\t\
 		comp_scalers = [ root_comp_scaler ]
 
 		status = MPI.Status()
+
+		# Get other models from the slaves
 		while nmodels < num_bags:
 
 			mags, magm, others, otherm, comps, compm = comm.recv(obj=None, source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)
@@ -280,22 +289,66 @@ AUC (Both)  = %.3f +/- %.3f\n\t\
 			comp_models.append(compm)
 			comp_scalers.append(comps)
 
+		# Put all of these models into bags
 		BaggedMagModel = BaggedModel(mag_scalers, mag_models)
-		print np.array(Y_svm_train).shape, np.array(X_svm_train_mag).shape, np.array(X_svm_train_other).shape, np.array(X_svm_train_comp).shape
-		if fit_model_weights: BaggedMagModel.fit(X_svm_train_mag, Y_svm_train)
-
 		BaggedOtherModel = BaggedModel(other_scalers, other_models)
-		if fit_model_weights: BaggedOtherModel.fit(X_svm_train_other, Y_svm_train)
-
 		BaggedCompModel = BaggedModel(comp_scalers, comp_models)
-		if fit_model_weights: BaggedCompModel.fit(X_svm_train_comp, Y_svm_train)
 
-		bagged_mag_model_rootname = "%s/bagged_mag_clfr_iter%04d"
-		bagged_other_model_rootname = "%s/bagged_other_clfr_iter%04d"
-		bagged_comp_model_rootname = "%s/bagged_comp_clfr_iter%04d"
+		# You can fit an SVM decision maker if you want; otherwise it'll select the maximum score.
+		if fit_model_weights: 
+			X_svm_train_other = SVM_OtherObservations
+			X_svm_train_mag = SVM_MagObservations
+			X_svm_train_comp = ZipAndMerge(SVM_MagObservations, SVM_OtherObservations)
+			Y_svm_train = SVM_MagLabels
 
-		JunkScaler = lambda x : x
+			BaggedMagModel.fit(X_svm_train_mag, Y_svm_train)
+			BaggedOtherModel.fit(X_svm_train_other, Y_svm_train)
+			BaggedCompModel.fit(X_svm_train_comp, Y_svm_train)
 
+		# Root file names of each model
+		bagged_mag_model_rootname = "%s/bagged_mag_clfr_iter%04d"%(model_output_dir,iteration)
+		bagged_other_model_rootname = "%s/bagged_other_clfr_iter%04d"%(model_output_dir, iteration)
+		bagged_comp_model_rootname = "%s/bagged_comp_clfr_iter%04d"%(model_output_dir, iteration)
+
+		# Save these models!!
+		# TODO: re-train on ALL labeled data (these are only trained on MOST of the labeled data for
+		#       cross-validation purposes.)
+		logprint("Saving bagged model.")
+		BaggedCompModel.save(bagged_comp_model_rootname)
+		BaggedMagModel.save(bagged_mag_model_rootname)
+		BaggedOtherModel.save(bagged_other_model_rootname)
+
+		# <TESTING LOAD/SAVE
+		del BaggedCompModel
+		BaggedCompModel = BaggedModel()
+		BaggedCompModel.load(bagged_comp_model_rootname)
+		'''
+		print "scalers and models..."
+		mno = 1
+		for s, m in zip(BaggedCompModel.scalers, BaggedCompModel.models):
+			if not s is None:
+				res = m.predict_proba(s.transform(X_comp_test))
+			else:
+				res = m.predict_proba(X_comp_test)
+			R = [ r[1] for r in res ]
+			print mno, min(R), max(R), np.mean(R), np.std(R)
+			mno+= 1
+		print "get_model_preds_ (should be same as above!) "
+		Mpreds = BaggedCompModel.get_model_preds_(X_comp_test)
+		for mno in range(len(Mpreds[0])):
+			R = [ Mpreds[dno][mno][1] for dno in range(len(Mpreds)) ]
+			print mno+1, min(R), max(R), np.mean(R), np.std(R)
+		print "clfrs_"
+		print BaggedCompModel.clfrs_
+		print "predict proba"
+		Pprob =  BaggedCompModel.predict_proba(X_comp_test)
+		R = [ p[1] for p in Pprob ]
+		print min(R), max(R), np.mean(R), np.std(R)
+		sys.exit()
+		'''
+		# />
+
+		# Now cross validate!
 		logprint("Cross validating!!", all_nodes=True)
 
 		logprint(" (magnitude model)")
@@ -349,7 +402,7 @@ if use_matplotlib and ROOT:
 	ax_o.set_title("Other data")
 	ax_b.set_title("ALL data")
 	f.suptitle("Bagged model (%d bags)"%(num_bags))
-	plt.show()
+	plt.show(block=True)
 
 
 if ROOT:
@@ -366,7 +419,7 @@ Comp:  %.3f +/- %.5f\n\t\
 	np.mean(aucs_other), np.std(aucs_other),
 	np.mean(aucs_comp), np.std(aucs_comp))
 	
-	pickle.dump(("%s.pkl"%(bagged_other_model_rootname),) + ("%s.pkl"%(bagged_mag_model_rootname),) + \
+	pickle.dump(("%s"%(bagged_other_model_rootname),) + ("%s"%(bagged_mag_model_rootname),) + \
 			(skip_features, mag_features,vartypes_to_classify, OtherKeylist, MagKeylist), 
-			open(get_classifier_fname(iteration + 1), 'wb'))
+			open(get_classifier_fname(iteration), 'wb'))
 

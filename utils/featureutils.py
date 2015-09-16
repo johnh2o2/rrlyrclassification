@@ -29,9 +29,25 @@ def LoadLabeledHatIDs():
 #def LoadUnlabeledHatIDs(): 
 
 def SaveLabeledHatIDs(categories, iteration):
+	print " Saving ids into labeled hatids file: ", get_labeled_hatids_fname()
+
+	print "    reading labeled hatids"
+	dat = np.loadtxt(get_labeled_hatids_fname(), dtype=dt_labeled_hatids)
+	print "    replacing existing labels with ones youve overwritten"
+	for i in range(len(dat)):
+		if dat[i]['ID'] in categories and not dat[i]['label'] == categories[dat[i]['ID']]:
+			print "         [%s] %s --> %s"%(dat[i]['ID'], dat[i]['label'], categories[dat[i]['ID']])
+			dat[i]['label'] = categories[dat[i]['ID']]
+
+	print "    rewriting labeled hatids"
 	f = open(get_labeled_hatids_fname(), 'w')
+	for d in dat:
+		f.write("%-20s%-10i%-20s\n"%(d['ID'], d['iter_detected'], d['label']))
+	print "    writing newly labeled hatids"
 	for ID in categories:
-		f.write("%-20s%-10i%-20s\n"%(ID, iteration, categories[ID]))
+		if not ID in dat['ID']:
+			print "          > %-20s%-10i%-20s"%(ID, iteration, categories[ID])
+			f.write("%-20s%-10i%-20s\n"%(ID, iteration, categories[ID]))
 	f.close()
 
 def GCVS_GetVartypeClasses(vt):
@@ -331,9 +347,6 @@ def MakeObservations(feats, classes):
 			obs.append(feats[ID][k])
 		Observations.append(obs)
 	return np.array(IDs), np.array(Keylist), np.array(Observations), np.array(Labels)
-
-
-
 def get_mc_fit_features(features, pcov_file, N=100 ):
 	
 	assert(os.path.exists(pcov_file))
@@ -353,42 +366,72 @@ def get_mc_fit_features(features, pcov_file, N=100 ):
 	#print len(feats), feats[0]
 	return feats
 
-def score_features(features, pcov_file, iteration=0, N=5000, kind="other"):
+def process(feats, iteration=None):
 
-	#mag_scaler, mag_model, other_scaler, other_model, \
-	other_rootname, mag_rootname,\
+	if iteration is None:
+		iteration = get_iteration_number()
+
+	other_rootname, mag_rootname, \
 	skip_features, mag_features, vartypes_to_classify, \
 	other_keylist, mag_keylist = pickle.load(open(get_classifier_fname(iteration), 'rb'))
 
+	logprint("  Cleaning features...")
+	feats = CleanFeatures(feats)
 
+	logprint("  Adding custom features...")
+	feats = AddCustomFeatures(feats)
 
-	#scalers = { 'mag' : mag_scaler, 'other' : other_scaler}
-	models  = { 'mag' : BaggedModel(), 'other' : BaggedModel()}
+	logprint("  Splitting features...")
+	magfeats, otherfeats = SplitFeatures(feats, mag_features)
+
+	logprint("  Making observations...")
+	if not magfeats is None:
+		magobs = []
+		for i in magfeats:
+			obs = []
+			for k in mag_keylist:
+				obs.append(magfeats[i][k])
+			magobs.append(obs)
+
+	if not otherfeats is None:
+		otherobs = []
+		for i in otherfeats:
+			obs = []
+			for k in other_keylist:
+				obs.append(otherfeats[i][k])
+			otherobs.append(obs)
+
+	return feats, magfeats, otherfeats, magobs, otherobs
+
+def translate_features(features, iteration):
 	
-	models['mag'].load(mag_rootname)
-	models['other'].load(other_rootname)
+	feats, magfeats, otherfeats, magobs,  otherobs = process(features, iteration)
 
-	observs = { 'mag' : None, 'other' : None}
-	#scaler  =   scalers[kind]
-	model   =   models[kind]
+	observations = ZipAndMerge(magobs, otherobs)
 
-	feats = get_mc_fit_features(features,pcov_file,N=N)
-	Feats = { i : f for i, f in enumerate(feats)  }
+	return observations
 
-	F = CleanFeatures(Feats)
-	F = AddCustomFeatures(F)
 	
-	observs['mag'], observs['other'] = SplitFeatures(F, mag_features)
 
-	observations = make_obs(observs[kind], keylist=other_keylist)
+def score_features(features, pcov_file, iteration=0, N=1000, kind="other"):
 
-	#if not scaler is None:
-	#	observations = scaler.transform(observations)
+	model = BaggedModel()
+	model.load(get_classifier_fname(iteration))
+
+	#feats = get_mc_fit_features(features,pcov_file,N=N)
+	#Feats = { i : f for i, f in enumerate(feats)  }
+	#observations = translate_features(Feats, iteration)
+
+	observations = translate_features({ 0: features}, iteration)
 	scores = model.predict_proba(observations)
+	#print scores
+	#scores = model.predict_proba(observations)
+	#scores = [ p[1] for p in model.predict_proba(observations)]
+	#scores = [ model.predict_proba(observations) ]
 
 	return np.array([ s[1] for s in scores ])
 
-def test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score):
+def test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score, iteration, N=1000):
 	features = LoadFeatures(hatid)
 	
 	# If features is None, this is a bad ID
@@ -396,16 +439,20 @@ def test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score):
 		return None
 		
 	# Obtain MC scores
-	scores = score_features(features, pcov_file=get_pcov_file(hatid), iteration=iteration)
+	scores = score_features(features, pcov_file=get_pcov_file(hatid), iteration=iteration, N=N)
 
 	# Mark ID if it's a candidate
+
 	if is_candidate(scores, min_score, min_frac_above_min_score): 
+		#plt.hist(scores, bins = 100)
+		#plt.show(block=True)
+		print "%s : %.4f %.4f [%.4f +/- %.4f] (%d/%d above %.3e)"%(hatid, min(scores), max(scores), np.mean(scores), np.std(scores), len([ s for s in scores if s > min_score ]), len(scores), min_score)
 		return True
 
 	else: 
 		return False
 
-def generate_features(hatid,  field=None, keylist=None):
+def generate_features(hatid,  field=None, keylist=None, save_full_lc=True):
 	logprint("  generate_features -- %s"%(hatid), all_nodes=True)
 	# Skip if this is a known bad id
 	if hatid in bad_ids: return False
@@ -417,7 +464,7 @@ def generate_features(hatid,  field=None, keylist=None):
 	# Load/make features
 	feat_fname = hat_features_fname(hatid, model_prefix)
 	if not os.path.exists(feat_fname) or overwrite:
-		lc = load_full_tfalc_from_scratch(hatid, field=field, keylist_dat=keylist)
+		lc = load_full_tfalc_from_scratch(hatid, field=field, keylist_dat=keylist, save_full_lc=True)
 		features = fs.get_features(lc, save_pcov=True, pcov_file=get_pcov_file(hatid))
 		pickle.dump(features, open(feat_fname, 'wb'))
 	else:
@@ -430,3 +477,5 @@ def generate_features(hatid,  field=None, keylist=None):
 			pickle.dump(features, open(feat_fname, 'wb'))
 	if features is None: return False
 	return True
+
+

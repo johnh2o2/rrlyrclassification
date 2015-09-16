@@ -1,17 +1,20 @@
-import re, sys, os
+import re, sys, os, gzip
 from lcutils.lcutils_config import *
 from sklearn.svm import SVC
 from sklearn.lda import LDA
 from sklearn.qda import QDA
 import numpy as np
+import cPickle as pickle
 
 RUNNING_ON_DELLA = True
 model_prefix = "rrab_v0"
-field_to_analyze = '219'
+fields_to_analyze = [ '145', 'gcvs' ]
 min_score = 0.05
-min_frac_above_min_score = 0.3
+min_frac_above_min_score = 0.1
+nmc = 5000
 ssh_host_name = 'phn1'
 VERBOSE = True
+NFILES_MAX = None
 
 if RUNNING_ON_DELLA:
 	parent_dir = '/home/jah5/rrlyr_search/rrlyrclassification'
@@ -24,8 +27,9 @@ else:
 	DYLD_LIBRARY_PATH = '/opt/local/lib'
 	SCRATCH = "%s/SCRATCH"%(parent_dir)
 
-	NFILES_MAX = 10
-	min_score = -1.0
+	#NFILES_MAX = 10
+	#min_score = -1.0
+	#min_score = 0.05
 
 remote_keylist_fname = lambda field : '/nfs/phn11/ar1/H/BIGPROJ/hatuser/2007_hatnet_phot/G%s/BASE/keylist.txt'%(field)
 
@@ -38,17 +42,14 @@ if not os.path.isdir(SCRATCH):
 
 LCCACHE = "%s/LCCACHE"%(SCRATCH)
 keylist_dir = '%s/keylists'%(SCRATCH)
+twomass_dir = "%s/twomass"%(SCRATCH)
 data_dir = '%s/data'%(SCRATCH)
 model_dir = "%s/models"%(SCRATCH)
 model_output_dir = "%s/%s"%(model_dir, model_prefix)
 feat_dir = "%s/features"%(SCRATCH)
+hatids_in_fields_dir = "%s/hatids_in_field_lists"%(SCRATCH)
 
-if not RUNNING_ON_DELLA: 
-	data_dir = "/Users/jah5/Documents/Fall2014_Gaspar/data"
-	LCCACHE = "/Users/jah5/Documents/Fall2014_Gaspar/rrlyr_classification/lccache"
-	feat_dir = "/Users/jah5/Documents/Fall2014_Gaspar/features"
-
-for Dir in [ LCCACHE, keylist_dir, data_dir, model_dir, model_output_dir, feat_dir ]:
+for Dir in [ LCCACHE, keylist_dir, data_dir, model_dir, model_output_dir, feat_dir, twomass_dir, hatids_in_fields_dir ]:
 	if not os.path.isdir(Dir): os.makedirs(Dir)
 
 labeled_hatids_fname = "%s/labeled_hatids.txt"%(model_output_dir)
@@ -81,7 +82,7 @@ mag_features = [ 'R-V', 'I-V', 'J-V', 'H-V', 'K-V' ]
 
 num = None
 min_ndets = 20
-nfolds = 10
+nfolds = 50
 cutoff = 0.05
 overwrite = False
 
@@ -160,29 +161,39 @@ get_pcov_file    = lambda HATID  : "%s/%s.pcov"%(LCCACHE, HATID )
 get_model_name = lambda iteration : "%s_iter%04d"%(model_prefix, iteration)
 get_scores_fname = lambda HATID, iteration  : "%s/%s-%s.scores"%(LCCACHE, HATID, get_model_name(iteration))
 
-get_hatids_in_field_fname = lambda field : "%s/hatids_in_field_%s.list"%(data_dir, field)
+get_hatids_in_field_fname = lambda field : "%s/hatids_in_field_%s.list"%(hatids_in_fields_dir, field)
 
 get_labeled_hatids_fname = lambda : "%s/labeled_hatids.dat"%(model_output_dir)
 get_mystery_hatids_fname = lambda iteration : "%s/uncertain_labels_iter%d.dat"%(model_output_dir, iteration)
 #get_classifier_fname = lambda iteration : "%s/classifier_iter%04d.pkl"%(model_output_dir, iteration)
 get_classifier_fname = lambda iteration : "%s/bagged_comp_clfr_iter%04d"%(model_output_dir, iteration)
-get_keylist_dir = lambda field : "/home/jhoffman/2007_hatnet_phot/G%s/BASE"%(field)
+#get_keylist_dir = lambda field : "/home/jhoffman/2007_hatnet_phot/G%s/BASE"%(field)
+def get_keylist_dir(field): 
+	if field == '145':
+		return "/nfs/phn1/ar2/EDRIVE/EDRIVE51/ANL/145/BASE"
+	else:
+		return "/home/jhoffman/2007_hatnet_phot/G%s/BASE"%(field)
 get_remote_keylist_fname = lambda field : "%s/keylist.txt"%(get_keylist_dir(field))
-get_local_keylist_dir = lambda : model_dir
+get_local_keylist_dir = lambda : keylist_dir
 get_local_keylist_fname = lambda field : "%s/keylist_field%s.txt"%(get_local_keylist_dir(), field)
+get_local_keylist_dict_fname = lambda field : "%s/keylist_field%s_dict.pklz"%(get_local_keylist_dir(), field)
+
 
 get_remote_2mass_dir = lambda : "/home/jhoffman"
 get_remote_2mass_fname = lambda field : "%s/colors_field%s.dat"%(get_remote_2mass_dir(), field)
 get_local_2mass_dir = lambda : model_output_dir
 get_local_2mass_fname = lambda field : "%s/colors_field%s.dat"%(get_local_2mass_dir(), field)
 
+
+twomass_info_file = lambda field : pickle.load(gzip.open("%s/twomass_info_field%s.pklz"%(twomass_dir, field), 'rb'))
+
+
 get_candidate_fname = lambda iteration : "%s/candidates_iter%04d.dat"%(model_output_dir, iteration)
 get_candidate_results_fname = lambda iteration : "%s/results_iter%04d.dat"%(model_output_dir, iteration)
 
 get_gzipped_csv_lc_fname = lambda hatid : "%s/%s-hatlc.csv.gz"%(data_dir, hatid)
-get_raw_lc_fname = lambda hatid : "%s/%s.tfalc"%(LCCACHE, hatid)
 
-get_full_tfalc_fname = lambda hatid : "%s/%s-full.tfalc"%(LCCACHE, hatid)
+#get_full_tfalc_fname = lambda hatid : "%s/%s-full.tfalc"%(LCCACHE, hatid)
 
 get_bad_ids_fname = lambda iteration : '%s/bad_ids_iter%04d.pkl'%(model_output_dir, iteration)
 

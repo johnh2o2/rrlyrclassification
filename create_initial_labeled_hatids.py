@@ -12,6 +12,7 @@ comm = MPI.COMM_WORLD
 size = comm.Get_size()
 rank = comm.Get_rank()
 ROOT = (rank == 0)
+download = False
 
 # Make the directory for this model if it doesn't already exist
 if not os.path.exists(model_output_dir): os.makedirs(model_output_dir)
@@ -70,10 +71,12 @@ else:
 
 def prune_and_save(results):
 	# Add to "BAD_ID's" if there was a problem with the ID
-	BAD_IDS = []
+	
 	logprint("                              : Pruning out bad ID's")
-	for ID, status in results:
-		if not status is True: BAD_IDS.append(ID)
+	
+	BAD_IDS = [ h for h,r in results if not r ]
+	pickle.dump(BAD_IDS, open(get_bad_ids_fname(0), 'wb'))
+
 	logprint("                              : Writing labeled ID's")
 	# Write initial labeled ids!
 	if os.path.exists(get_labeled_hatids_fname()): raise Exception("File %s already exists; delete first and then try again."%(fname))
@@ -83,43 +86,48 @@ def prune_and_save(results):
 		if ID in BAD_IDS: continue
 		f.write("%-20s%-10i%-20s\n"%(ID, 0, categories[ID]))
 	f.close()
+
+
 	logprint("                               : Done.")
 
+tmi = twomass_info_for_field['gcvs']
+def tmdat(hatid):
+	if not hatid in tmi: return None
+	return tmi[hatid]
+dl = lambda hatid : load_full_tfalc_from_scratch(hatid, twomass_dat=tmdat(hatid), save_full_lc=True, force_redo=False)
+
 if size == 1:
-	
-	logprint("                               : opening ssh connection", all_nodes = True)
-	
-	# Download full tfalc lightcurves
-	ssh, sftp = open_ssh_connection()
-	logprint("                               : Downloading lcs.")
-	dl = lambda hatid : load_full_tfalc_from_scratch(hatid, ssh=ssh, sftp=sftp)
-	for hatid in hatids: dl(hatid)
+	if download:
+		for hatid in hatids: dl(hatid)
 
 	logprint("                              : Now generating features!")
+
 	# Generate features for hatids
 	results = []
 	for hatid in hatids: results.append((hatid, generate_features(hatid)))
 
+	logprint("                              : %d OK sets of features!"%(len([ h for h,r in results if r ])))
+
 	prune_and_save(results)
-	close_ssh_connection(ssh, sftp)
+	#close_ssh_connection(ssh, sftp)
 
 elif ROOT:
-	logprint("                              : Downloading lcs.")
+	logprint("                              : Fixing lcs.")
 	# Download full tfalc lightcurves
-	msl.master(hatids)
+	if download : msl.master(hatids)
 
 	logprint("                              : Now generating features!")
 	# Generate features for hatids
 	results = msl.master(hatids)
+
+	logprint("                              : %d OK sets of features!"%(len([ h for h,r in results if r ])))
+
+	# Save!
 	prune_and_save(results)
 
 else:
-	# Download full tfalc lightcurves
-	logprint("                                     : opening ssh connection", all_nodes = True)
-	ssh, sftp = open_ssh_connection()	
-	logprint("                                     : Done -- starting slave operation", all_nodes=True)
-	msl.slave(lambda hatid : load_full_tfalc_from_scratch(hatid, ssh=ssh, sftp=sftp, save_full_lc=True))
-	close_ssh_connection(ssh, sftp)
+	# Load full tfalcs from scratch
+	if download : msl.slave(dl)
 
 	# Generate features!
 	msl.slave(lambda hatid : (hatid, generate_features(hatid)))
