@@ -19,17 +19,19 @@ NFILES_MAX = None
 if RUNNING_ON_DELLA:
 	parent_dir = '/home/jah5/rrlyr_search/rrlyrclassification'
 	SCRATCH = "/tigress/jah5/rrlyr_scratch"
+	information_dir = "%s/information"%(SCRATCH)
 else:
 	parent_dir = '/Users/jah5/Documents/Fall2014_Gaspar/rrlyr_classification'
 	#SCRATCH = '%s'%(parent_dir)
 	DYLD_LIBRARY_PATH = '/opt/local/lib'
 	SCRATCH = "%s/SCRATCH"%(parent_dir)
+	information_dir = "%s/information"%(parent_dir)
+
 
 	#NFILES_MAX = 10
 	#min_score = -1.0
 	#min_score = 0.05
 
-remote_keylist_fname = lambda field : '/nfs/phn11/ar1/H/BIGPROJ/hatuser/2007_hatnet_phot/G%s/BASE/keylist.txt'%(field)
 
 
 if not os.path.isdir(SCRATCH):
@@ -39,16 +41,19 @@ if not os.path.isdir(SCRATCH):
 	sys.exit()
 
 LCCACHE = "%s/LCCACHE"%(SCRATCH)
-keylist_dir = '%s/keylists'%(SCRATCH)
-twomass_dir = "%s/twomass"%(SCRATCH)
 data_dir = '%s/data'%(SCRATCH)
 model_dir = "%s/models"%(SCRATCH)
 model_output_dir = "%s/%s"%(model_dir, model_prefix)
 feat_dir = "%s/features"%(SCRATCH)
 hatids_in_fields_dir = "%s/hatids_in_field_lists"%(SCRATCH)
+keylist_dir = '%s/keylists'%(information_dir)
+twomass_dir = "%s/twomass"%(information_dir)
 
-for Dir in [ LCCACHE, keylist_dir, data_dir, model_dir, model_output_dir, feat_dir, twomass_dir, hatids_in_fields_dir ]:
+for Dir in [ LCCACHE, data_dir, model_dir, model_output_dir, feat_dir, hatids_in_fields_dir ]:
 	if not os.path.isdir(Dir): os.makedirs(Dir)
+
+if not os.path.isdir(information_dir) and RUNNING_ON_DELLA:
+	print "Cannot find information directory. Copy the zipped information.tar.gz file to your scratch directory (%s) and unzip there."%(SCRATCH)
 
 labeled_hatids_fname = "%s/labeled_hatids.txt"%(model_output_dir)
 vartypes_to_classify = [ 'RRAB','none' ]
@@ -117,7 +122,7 @@ grpsize = 10
 
 full_gcvs_match_cat_name = "Full_GCVS_Cross-matched_HATIDS_maxdist1.00.catalog"
 full_gcvs_match_cat_fname = '%s/gcvsutils/%s'%(parent_dir, full_gcvs_match_cat_name )
-field_info_fname = '%s/field_info.dict'%(parent_dir)
+field_info_fname = '%s/field_info2.pkl'%(information_dir)
 
 
 bad_ids = [ 'HAT-079-0000101', 'HAT-128-0000156', 'HAT-141-0001285', 'HAT-141-0004548', 'HAT-142-0004019'
@@ -153,6 +158,8 @@ variable_star_classes = {
            'DS', 'DW', 'K', 'KE', 'KW', 'SD'],
     'RR Lyrae' : [ 'RRAB', 'RRC', 'R', 'RR', 'RR(B)' ]
 }
+
+remote_keylist_fname = lambda field : '/nfs/phn11/ar1/H/BIGPROJ/hatuser/2007_hatnet_phot/G%s/BASE/keylist.txt'%(field)
 
 hat_features_fname = lambda hatid, model_name : "%s/%s-features-%s.pkl"%(feat_dir, hatid, model_name)
 get_pcov_file    = lambda HATID  : "%s/%s.pcov"%(LCCACHE, HATID )

@@ -101,7 +101,7 @@ for Iter in range(num_iterations):
 	if rank > num_bags: break # right now we're operating on a 1 bag/core system.
 	if ROOT:
 
-		# An extra bag for the SVM decision maker 
+		# An extra bag for testing (and possibly the SVM decision maker)
 		if fit_model_weights:
 			bags = get_bagged_samples(categories, num_bags + 2)
 		else:

@@ -34,7 +34,7 @@ def transfer_gcvs():
 	print "importing..."
 	from utils.miscutils import open_ssh_connection, close_ssh_connection, get_field_of, rexists
 	print "loading hatids.."
-	hatids 				= pickle.load(open("%s/good_gcvs_hatids.list"%(parent_dir), 'rb'))
+	hatids 				= pickle.load(open("%s/good_gcvs_hatids.list"%(information_dir), 'rb'))
 	print "opening ssh connection.."
 	client, sftp = open_ssh_connection()
 	for i,hatid in enumerate(hatids):

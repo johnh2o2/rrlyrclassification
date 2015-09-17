@@ -3,8 +3,8 @@ import gzip, sys
 import cPickle as pickle
 from utils.miscutils import open_ssh_connection, close_ssh_connection, get_2mass_data_for_hatid_over_ssh
 
-hatids = pickle.load(open("%s/good_gcvs_hatids.list"%(parent_dir),'rb'))
-hatid_field_list = pickle.load(open("%s/hatid_field_list.pkl"%(parent_dir), 'rb'))
+hatids = pickle.load(open("%s/good_gcvs_hatids.list"%(information_dir),'rb'))
+hatid_field_list = pickle.load(open("%s/hatid_field_list.pkl"%(information_dir), 'rb'))
 norig = len(hatids)
 pruned_hatids = [ hatid for hatid in hatids if hatid in hatid_field_list ]
 print norig - len(pruned_hatids), " hatids pruned because they have no known field."

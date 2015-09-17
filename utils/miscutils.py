@@ -56,12 +56,29 @@ else:
 	gcvs_info = pickle.load(open(gcvs_info_file, 'rb'))
 
 
+# Load hatids for each field
 for field in fields_to_analyze:
 	if field == 'gcvs': 
 		for hatid in gcvs_info:
 			hatid_field_list[hatid] = gcvs_info[hatid]
 	else: 
-		field_ids = pickle.load(open("%s/hatids_in_field_%s.list"%(hatids_in_fields_dir, field), 'rb'))
+		
+		fname = os.path.join(hatids_in_fields_dir, "hatids_in_field_%s.list"%(field))
+		'''
+		if not os.path.exists(fname):
+			field_ids = []
+			if not os.path.exists(hatid_field_list_fname):
+				get_hatid_field_list(fields_to_analyze)
+
+				print "miscutils: loading hatid_field_list.."
+				hatid_field_list = pickle.load(open(hatid_field_list_fname, 'rb'))
+
+			for hatid in hatid_field_list:
+				if hatid_field_list[hatid] == field: field_ids.append(hatid)
+
+			pickle.save(field_ids, open(fname, 'wb'))
+		'''
+		field_ids = pickle.load(open(fname, 'rb'))
 		for hatid in field_ids:
 			hatid_field_list[hatid] = field
 
@@ -1365,12 +1382,6 @@ def get_hatid_field_list(fields):
 			hatid_field_list[hatid] = field
 	pickle.dump(hatid_field_list, open(hatid_field_list_fname, 'wb'))
 	close_ssh_connection(ssh, sftp)
-#if not os.path.exists(hatid_field_list_fname):
-#	get_hatid_field_list(fields_to_analyze)
-
-#print "miscutils: loading hatid_field_list.."
-#hatid_field_list = pickle.load(open(hatid_field_list_fname, 'rb'))
-
 
 load_lightcurve = load_full_tfalc_from_scratch
 

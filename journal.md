@@ -176,6 +176,12 @@ HAT-094-0001548.epdlc  HAT-094-0001548.epdlog  HAT-094-0001548.rlc  HAT-094-0001
 * Everything runs now, but the model doesn't seem to perform as well as advertised by cross-validation...
 	* Even doing away with MC and using the GCVS sources, the model only picks up something like 3/4 of the GCVS RRlyr
 
+#September 17
+* Tried running on Della: 
+	* `hatids_in_field_().list` files don't exist. Writing code in miscutils to generate them.
+		* Wrote something in miscutils, but realized the issue is as simple as scp'ing the folder to della...
+	* Also had to copy "other_data" file over to della -- need a simpler system for this!!
+	* Needed to do "pip install dill --user"
 
 # TODO
 * Collect all relevant non-lc files into a single tarball
