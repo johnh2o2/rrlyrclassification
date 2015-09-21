@@ -196,17 +196,34 @@ def MakeOtherModel(xtrain, ytrain):
 	#xtrain_scaled = scaler.transform(xtrain)
 	#clfr.fit(xtrain_scaled, ytrain)
 	#return scaler, clfr
-def PlotRandomForestImportances( RFC, Keylist ):
-	imps = RFC.feature_importances_
-	inds = np.argsort(imps)
-	imps = np.sort(imps)
-	labels = [ Keylist[i] for i in inds]
+def PlotRandomForestImportances( RFCs, Keylists ):
+	if not hasattr(RFCs, '__getitem__'):
+		imps = RFCs.feature_importances_
+		xerr = None
+		inds = np.argsort(imps)
+		imps = np.sort(imps)
+		labels = [ Keylists[i] for i in inds]
+	else:
+		Imps = { k : [] for k in Keylists[0] }
+		for RFC, Keylist in zip(RFCs, Keylists):
+			fimps = RFC.feature_importances_
+			for i, k in enumerate(Keylist):
+				Imps[k].append(fimps[i])
+		imps = [ np.mean(Imps[Keylists[0][i]]) for i in range(len(Keylists[0])) ]
+		xerr = [ np.std(Imps[Keylists[0][i]])  for i in range(len(Keylists[0])) ]
+
+		inds = np.argsort(imps)
+		imps = np.sort(imps)
+
+		xerr = [ xerr[inds[i]] for i in range(len(inds)) ]
+
+		labels = [ Keylists[0][i] for i in inds ]
 
 	x = np.arange(len(imps)) + 1
 	f = plt.figure(figsize=(10,9))
 	ax = f.add_subplot(111)
 
-	ax.barh(x - 0.5,imps, height=1.0, alpha=0.5 )
+	ax.barh(x - 0.5,imps, xerr=xerr, height=1.0, alpha=0.5 )
 	ax.set_yticks(x)
 	ax.set_ylim(min(x) - 0.5, max(x) + 0.5)
 	ax.set_yticklabels(labels, fontsize=10)
@@ -291,17 +308,21 @@ def LoadFeatures(ID):
 	logprint("  featureutils (LoadFeatures): loading features for hatid: %s"%(ID), all_nodes=True)
 
 	feat_fname = hat_features_fname(ID, model_prefix)
+
 	if os.path.exists(feat_fname) and not overwrite:
+		logprint("  featureutils (LoadFeatures; %s): found file %s"%(ID, feat_fname), all_nodes=True)
 		try:
+			logprint("  featureutils (LoadFeatures; %s): loaded %s"%(ID, feat_fname), all_nodes=True)
 			return pickle.load(open(feat_fname, 'rb'))
+
 
 		except: 
 			raise Exception("Cannot load features for HAT-ID %s (filename: '%s')"%(ID, feat_fname))
 	else:
-		logprint("                             : no features found; generating them!")
+		logprint("                             : no features found for %s; generating them!"%(ID), all_nodes=True)
 		LC = load_lightcurve(ID)
 		if LC is None: 
-			logprint("                             : LC is NONE :(")
+			logprint("                             : %s: LC is NONE :("%(ID), all_nodes=True)
 			return None
 		features = fs.get_features(LC, save_pcov=True, pcov_file=get_pcov_file(ID))
 		pickle.dump(features, open(feat_fname, 'wb'))

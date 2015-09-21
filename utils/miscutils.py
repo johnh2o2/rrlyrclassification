@@ -29,17 +29,17 @@ def logprint(m, all_nodes=False):
 	if VERBOSE and all_nodes: print "node %d: %s "%(comm.rank, m)
 	elif VERBOSE and ROOT: print m
 
-gcvs_info_file = "%s/gcvs_info.dict"%(parent_dir)
-field_info = pickle.load(open('field_info2.pkl', 'rb'))
+
+field_info = pickle.load(open(field_info_fname, 'rb'))
 all_fields = [ F for F in field_info ]
 hatid_field_list = {}
 if not os.path.exists(gcvs_info_file):
 	print "making gcvs info file..."
-	hatid_field_list_fname = "%s/hatid_field_list.pkl"%(parent_dir)
+	
 	hatid_field_list = pickle.load(open(hatid_field_list_fname, 'rb'))
 
 	print "loading gcvs ids..."
-	gcvs_ids = pickle.load(open("%s/good_gcvs_hatids.list"%(parent_dir), 'rb'))
+	gcvs_ids = pickle.load(open(good_gcvs_hatids_fname, 'rb'))
 
 	print "making info..."
 	gcvs_info = {}
@@ -557,6 +557,8 @@ def translate_popt_to_fit_params(popt, use_dwdt=False):
 		return amplitudes, phases, popt[0], popt[1]
 	else:
 		return amplitudes, phases, popt[0]
+def translate_features_to_fit_params( features, use_dwdt = False):
+	return translate_popt_to_fit_params(translate_features_to_popt(features, use_dwdt=use_dwdt) ,use_dwdt=use_dwdt)
 def translate_fit_params_to_features(amps,phs,c):
 	features = {}
 	features['constant_offset'] = c
@@ -990,7 +992,7 @@ def save_and_return(lc, hatid, save_full_lc):
 		f.close()
 	return lc
 
-def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_dat=None, ssh=None, sftp=None, save_full_lc=True, min_observations=5, delete_raw_lc=True, force_redo = False):
+def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_dat=None, ssh=None, sftp=None, save_full_lc=True, min_observations=5, delete_raw_lc=True, force_redo = force_redo):
 	logprint("  load_full_tfalc_from_scratch ** %s"%(hatid), all_nodes=True)
 
 	# Load full lightcurve if one is available

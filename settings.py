@@ -7,7 +7,7 @@ import numpy as np
 import cPickle as pickle
 
 RUNNING_ON_DELLA = False
-model_prefix = "rrab_v0"
+model_prefix = "rrab_v1"
 fields_to_analyze = [ '145', 'gcvs' ]
 min_score = 0.05
 min_frac_above_min_score = 0.1
@@ -20,12 +20,14 @@ if RUNNING_ON_DELLA:
 	parent_dir = '/home/jah5/rrlyr_search/rrlyrclassification'
 	SCRATCH = "/tigress/jah5/rrlyr_scratch"
 	information_dir = "%s/information"%(SCRATCH)
+	force_redo = False
 else:
 	parent_dir = '/Users/jah5/Documents/Fall2014_Gaspar/rrlyr_classification'
 	#SCRATCH = '%s'%(parent_dir)
 	DYLD_LIBRARY_PATH = '/opt/local/lib'
 	SCRATCH = "%s/SCRATCH"%(parent_dir)
 	information_dir = "%s/information"%(parent_dir)
+	force_redo = True
 
 
 	#NFILES_MAX = 10
@@ -45,7 +47,7 @@ data_dir = '%s/data'%(SCRATCH)
 model_dir = "%s/models"%(SCRATCH)
 model_output_dir = "%s/%s"%(model_dir, model_prefix)
 feat_dir = "%s/features"%(SCRATCH)
-hatids_in_fields_dir = "%s/hatids_in_field_lists"%(SCRATCH)
+hatids_in_fields_dir = "%s/hatids_in_field_lists"%(information_dir)
 keylist_dir = '%s/keylists'%(information_dir)
 twomass_dir = "%s/twomass"%(information_dir)
 
@@ -55,7 +57,7 @@ for Dir in [ LCCACHE, data_dir, model_dir, model_output_dir, feat_dir, hatids_in
 if not os.path.isdir(information_dir) and RUNNING_ON_DELLA:
 	print "Cannot find information directory. Copy the zipped information.tar.gz file to your scratch directory (%s) and unzip there."%(SCRATCH)
 
-labeled_hatids_fname = "%s/labeled_hatids.txt"%(model_output_dir)
+
 vartypes_to_classify = [ 'RRAB','none' ]
 skip_vartypes = [ '*' , 'R' , 'RR', 'R(B)']
 #types_to_use = [ 'E', 'EW', 'EB', 'EA', 'R', 'RRAB', 'RRC', 'RR', 'RR(AB)' ]
@@ -120,10 +122,6 @@ fraction_of_smallest_stds_to_use = 0.5
 time_col = 'BJD'
 grpsize = 10
 
-full_gcvs_match_cat_name = "Full_GCVS_Cross-matched_HATIDS_maxdist1.00.catalog"
-full_gcvs_match_cat_fname = '%s/gcvsutils/%s'%(parent_dir, full_gcvs_match_cat_name )
-field_info_fname = '%s/field_info2.pkl'%(information_dir)
-
 
 bad_ids = [ 'HAT-079-0000101', 'HAT-128-0000156', 'HAT-141-0001285', 'HAT-141-0004548', 'HAT-142-0004019'
 'HAT-150-0012878', 'HAT-168-0002894', 'HAT-189-0002780', 'HAT-196-0018339', 'HAT-207-0011053', 
@@ -158,7 +156,15 @@ variable_star_classes = {
            'DS', 'DW', 'K', 'KE', 'KW', 'SD'],
     'RR Lyrae' : [ 'RRAB', 'RRC', 'R', 'RR', 'RR(B)' ]
 }
+good_gcvs_hatids_fname = "%s/good_gcvs_hatids.list"%(information_dir)
+hatid_field_list_fname = "%s/hatid_field_list.pkl"%(information_dir)
 
+gcvs_info_file = "%s/gcvs_info.dict"%(information_dir)
+full_gcvs_match_cat_name = "Full_GCVS_Cross-matched_HATIDS_maxdist1.00.catalog"
+full_gcvs_match_cat_fname = '%s/gcvsutils/%s'%(parent_dir, full_gcvs_match_cat_name )
+field_info_fname = '%s/field_info2.pkl'%(information_dir)
+
+labeled_hatids_fname = "%s/labeled_hatids.txt"%(model_output_dir)
 remote_keylist_fname = lambda field : '/nfs/phn11/ar1/H/BIGPROJ/hatuser/2007_hatnet_phot/G%s/BASE/keylist.txt'%(field)
 
 hat_features_fname = lambda hatid, model_name : "%s/%s-features-%s.pkl"%(feat_dir, hatid, model_name)

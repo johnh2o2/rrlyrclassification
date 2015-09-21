@@ -3,12 +3,10 @@ import subprocess, os, shlex, sys
 from time import time
 from settings import *
 
-nthreads = 2
+nthreads = 4
 RSYNC_RSH="ssh -c arcfour -o Compression=no"
 #remote_server="jah5@phn1.astro.princeton.edu"
 remote_server="phn1"
-
-
 
 def new_proc(rdir, ldir):
 	print "Starting process to move %s to %s"%(rdir, ldir)
@@ -48,11 +46,12 @@ def transfer_gcvs():
 		fname = "%s.tfalc"%(hatid)
 		fname_r = "%s/%s"%(field_list[field], fname)
 		fname_l = "%s/%s"%(directory, fname)
+		if os.path.exists(fname_l): continue
 		if not rexists(sftp, fname_r ): 
 			print "-----  ",hatid, " (GCVS) %d/%d"%(i+1, len(hatids)), "is not available on phn1"
 			continue
 		if not os.path.isdir(directory): os.makedirs(directory)
-		
+		print "Getting ",hatid
 		sftp.get(fname_r, fname_l)
 
 	close_ssh_connection(client, sftp)
@@ -89,10 +88,10 @@ def transfer(remote_dirs, local_dirs, nthreads=nthreads):
 
 if __name__ == '__main__':
 	import cPickle as pickle
-	field_list = pickle.load(open("field_info2.pkl", 'rb'))
+	field_list = pickle.load(open(field_info_fname, 'rb'))
 	#fields = [ field for field in field_list ]
-	fields =fields_to_analyze
-	
+	#fields =fields_to_analyze
+	fields = ['gcvs']
 	if 'gcvs' in fields: transfer_gcvs()
 	#ldir_pfix = "/tigress/jah5/rrlyr_scratch/LCCACHE"
 	#ldir_pfix = "testing_file_transfer"

@@ -404,6 +404,8 @@ if use_matplotlib and ROOT:
 	f.suptitle("Bagged model (%d bags)"%(num_bags))
 	plt.show(block=True)
 
+	PlotRandomForestImportances( BaggedCompModel.models,[  zip(OtherKeylist, MagKeylist) for i in range(len(BaggedCompModel.models)) ] )
+
 
 if ROOT:
 	aucs_mag = [ auc(fpr, tpr) for fpr, tpr in zip(bfprs_mag, btprs_mag) ]

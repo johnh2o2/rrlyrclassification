@@ -183,6 +183,64 @@ HAT-094-0001548.epdlc  HAT-094-0001548.epdlog  HAT-094-0001548.rlc  HAT-094-0001
 	* Also had to copy "other_data" file over to della -- need a simpler system for this!!
 	* Needed to do "pip install dill --user"
 
+#September 18 -- meeting notes
+* Told them about doing 145 and showed them the sample RR-Lyrae that I found
+	* It *could* be an RRab, but might be RRc or contact binary
+* Gaspar wants to know timing
+* Gaspar pointed out that it might be useful to use as much existing data for a given source as is available
+	* ASAS, Hipparcos, etc.
+* **Proper motions** -- Joel mentioned that there's some sort of "corrected"(?) proper motion value, and that this gives a reasonable distance estimate (!).
+* **Multiple sources**
+	* Overlapping fields
+	* HAT-144-... might be in field 145 -- this means that the *primary* location of the source is in field 144, but the observed field is 145
+	* SHOULD ALL BE NAMED THE SAME THING
+	* *Chelsea figured out how to stitch these together* -- you have to detrend them. Basically add a free parameter to your fit!
+	* Ignoring this for now; smaller amplitude sources might be missed, but that's ok (for now)
+* Worry about how robust your cross-validation is
+	* You're not using a representative sample
+* Gaspar once-again cautioned that the project can very quickly become too technical
+* Gaspar talked about how it might be very useful to involve some sort of citizen science
+
+# September 20
+* Another idea that might be more efficient and maybe will achieve the same results (or similar results):
+	* Instead of *manually* labeling a flagged subset of the unlabeled data at each iteration, what if we *automatically* label sources that are > some threshold as being RR lyrae? Then retrain, etc.
+	* We could re-evaluate scores and then *unlabel* some data that falls below the threshold...
+* Yet another idea:
+
+``` python
+
+		# First scores are from initial model
+		scores = { source : [ initial_model.score(source) ] }
+
+		while not in_equilibrium(scores):
+			# update the scores
+			for source in sources:
+
+				# train set of models with stochastic labels
+				# on the other sources
+				Models = []
+
+				for n in range(N_monte_carlo):
+					labels, features = {}, {}
+
+					# Add stochastic labels
+					for source2 in sources:
+						if source2 == source: continue
+
+						a = random(0,1)
+						if a > scores[source][-1]: labels[source] = 'RRlyr'
+						else: labels[source] = 'none'
+
+					# train this model
+					model = train( features, labels )
+					Models.append(model) 
+
+				# new score is the mean of the model scores
+				scores[source].append( mean([ model.score(source[i]) for model in Models]) )
+
+```
+
+
 # TODO
 * Collect all relevant non-lc files into a single tarball
 * Write code to get `hatids_in_field_gcvs.list`
