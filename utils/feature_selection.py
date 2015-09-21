@@ -8,6 +8,9 @@ import sys, os, re
 #from fastlombscargle import fasper
 #from lsp import fasper
 from os.path import exists
+if RUNNING_ON_DELLA:
+	import matplotlib as mpl
+	mpl.use('Agg')
 import matplotlib.pyplot as plt
 from math import *
 from miscutils import *

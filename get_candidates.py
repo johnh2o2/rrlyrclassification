@@ -1,4 +1,7 @@
 import os, sys, glob
+if RUNNING_ON_DELLA:
+	import matplotlib as mpl
+	mpl.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d

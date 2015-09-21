@@ -7,7 +7,12 @@ from sklearn.qda import QDA
 from sklearn.metrics import roc_curve, auc, accuracy_score
 
 use_matplotlib = True
-if use_matplotlib: import matplotlib.pyplot as plt
+if use_matplotlib: 
+	if RUNNING_ON_DELLA:
+		print "update_model2: setting matplotlib backend to agg"
+		import matplotlib as mpl
+		mpl.use('Agg')
+	import matplotlib.pyplot as plt
 import masterslave as msl
 import numpy as np
 import os, sys
@@ -251,10 +256,10 @@ if use_matplotlib and ROOT:
 	AddROCtoAxis(ax, btprs, bfprs, tpr_range=[0.99, 1], fpr_range=[0.0, 0.4])
 	ax.set_title("Model iteration %d"%(iteration))
 	f.suptitle("Bagged model (%d bags)"%(num_bags))
-	plt.show(block=True)
+	f.savefig('%s/bagged_model_iter%d_cross_validation.png'%(parent_dir))
 
-	PlotRandomForestImportances( BaggedModel.models,[  rfc['keylist'] for i in range(len(BaggedModel.models)) ] )
-
+	PlotRandomForestImportances( BaggedModel.models,[  rfc['keylist'] for i in range(len(BaggedModel.models)) ], savefig='%s/bagged_model_iter%d_feature_imps.png'%(parent_dir ))
+	
 
 if ROOT:
 	aucs = [ auc(fpr, tpr) for fpr, tpr in zip(bfprs_comp, btprs_comp) ]

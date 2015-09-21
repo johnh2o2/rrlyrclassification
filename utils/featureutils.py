@@ -8,11 +8,16 @@ from sklearn.qda import QDA
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.metrics import roc_curve, auc, accuracy_score
 from sklearn.grid_search import GridSearchCV
+
+from settings import *
+if RUNNING_ON_DELLA:
+	print "featureutils: using agg backend for mpl"
+	import matplotlib as mpl
+	mpl.use('Agg')
 import matplotlib.pyplot as plt
 import readhatlc as rhlc
 import numpy as np
 import os, sys
-from settings import *
 from scipy.interpolate import interp1d
 import feature_selection as fs
 from miscutils import *
@@ -196,7 +201,7 @@ def MakeOtherModel(xtrain, ytrain):
 	#xtrain_scaled = scaler.transform(xtrain)
 	#clfr.fit(xtrain_scaled, ytrain)
 	#return scaler, clfr
-def PlotRandomForestImportances( RFCs, Keylists ):
+def PlotRandomForestImportances( RFCs, Keylists, savefig=None ):
 	if not hasattr(RFCs, '__getitem__'):
 		imps = RFCs.feature_importances_
 		xerr = None
@@ -228,7 +233,9 @@ def PlotRandomForestImportances( RFCs, Keylists ):
 	ax.set_ylim(min(x) - 0.5, max(x) + 0.5)
 	ax.set_yticklabels(labels, fontsize=10)
 	f.subplots_adjust(left=0.3, top=0.95, bottom=0.05)
-	plt.show()
+	if not RUNNING_ON_DELLA: plt.show()
+	elif not savefig is None: f.savefig(savefig)
+	else: print "Not saving or showing RFC importances figure!!!"
 def interp1d_improved(x, y):
 	func = interp1d(x, y)
 	def func2(X):
