@@ -101,7 +101,7 @@ for Iter in range(num_iterations):
 	if rank > num_bags: break # right now we're operating on a 1 bag/core system.
 	if ROOT:
 
-		# An extra bag for the SVM decision maker 
+		# An extra bag for testing (and possibly the SVM decision maker)
 		if fit_model_weights:
 			bags = get_bagged_samples(categories, num_bags + 2)
 		else:
@@ -403,6 +403,8 @@ if use_matplotlib and ROOT:
 	ax_b.set_title("ALL data")
 	f.suptitle("Bagged model (%d bags)"%(num_bags))
 	plt.show(block=True)
+
+	PlotRandomForestImportances( BaggedCompModel.models,[  zip(OtherKeylist, MagKeylist) for i in range(len(BaggedCompModel.models)) ] )
 
 
 if ROOT:
