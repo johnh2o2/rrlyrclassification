@@ -91,11 +91,11 @@ if __name__ == '__main__':
 	field_list = pickle.load(open(field_info_fname, 'rb'))
 	#fields = [ field for field in field_list ]
 	#fields =fields_to_analyze
-	fields = ['gcvs']
+	fields = [ 'gcvs' , '145']
 	if 'gcvs' in fields: transfer_gcvs()
-	#ldir_pfix = "/tigress/jah5/rrlyr_scratch/LCCACHE"
+	ldir_pfix = "/tigress/jah5/rrlyr_scratch/LCCACHE"
 	#ldir_pfix = "testing_file_transfer"
-	ldir_pfix = "/Users/jah5/Documents/Fall2014_Gaspar/rrlyr_classification/SCRATCH/LCCACHE"
+	#ldir_pfix = "/Users/jah5/Documents/Fall2014_Gaspar/rrlyr_classification/SCRATCH/LCCACHE"
 
 	remote_dirs = [ "%s/"%(field_list[field]) for field in fields if not field == 'gcvs' ]
 	local_dirs = [ "%s/%s"%(ldir_pfix, field) for field in fields if not field == 'gcvs']

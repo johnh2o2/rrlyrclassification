@@ -239,10 +239,24 @@ HAT-094-0001548.epdlc  HAT-094-0001548.epdlog  HAT-094-0001548.rlc  HAT-094-0001
 				scores[source].append( mean([ model.score(source[i]) for model in Models]) )
 
 ```
+* Yet *another* idea
+	* This is effectively a (4d-ish) problem: 2d kohonen for color + 2d kohonen for LC shape
+	* You could probably train
+		1. Kmap_color   
+		2. Kmap_lcshape 
+		3. TSVM(1, 2) -> score
 
-
-# TODO
-* Collect all relevant non-lc files into a single tarball
-* Write code to get `hatids_in_field_gcvs.list`
-* Test all aspects of the pipeline.
-* Write script to setup directory structure once scratch is erased. (This should also work on remote systems too)
+# TODO:
+* Run current implementation on 145 + 219 ON DELLA.
+	
+* Implement SSRFC method (in its own module). Test on some example datasets.
+* Write a general set of convergence functions (or use anything given by sklearn)
+	* Want to know:
+		1. How does the error rate depend on number of samples?
+		2. How does the ROC curve look as a function of iteration?
+* Implement a better candidate selection mechanism: You're not taking advantage of the state of the art.
+	* Don't want RRLyr-like objects. You want to choose "candidates" in the most efficient way possible to improve the model!
+* Attempt to make Kohonen maps of LC shapes faster.
+	* The "naive" way (maybe the only way) to train is len(xi) * len(xi) * N^d * Ntrain * 
+	                                                             ^^^^^^
+	                                                           best phase
