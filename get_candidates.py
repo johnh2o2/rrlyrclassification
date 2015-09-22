@@ -1,4 +1,6 @@
 import os, sys, glob
+
+from settings import *
 if RUNNING_ON_DELLA:
 	import matplotlib as mpl
 	mpl.use('Agg')
@@ -9,7 +11,6 @@ import utils.feature_selection as fs
 import utils.readhatlc as rhlc
 from utils.miscutils import *
 from utils.featureutils import *
-from settings import *
 import cPickle as pickle
 from contextlib import closing
 from paramiko import SSHConfig, SSHClient
@@ -44,7 +45,7 @@ if not os.path.exists(get_labeled_hatids_fname()): raise Exception(" Cannot find
 labeled_hatids = np.loadtxt(get_labeled_hatids_fname(), dtype=np.dtype([('hatid', 'S15'), ('iter', np.int_), ('label', 'S15')]))['hatid'].tolist()
 #print len(labeled_hatids)
 # Get HAT ID's that are located in the fields that we're analyzing (and that aren't already labeled)
-#hatids = [ hatid for hatid in hatid_field_list if get_field_of(hatid) in fields_to_analyze and not hatid in labeled_hatids ]
+hatids = [ hatid for hatid in hatid_field_list if get_field_of(hatid) in fields_to_analyze and not hatid in labeled_hatids ]
 
 
 #hatids = labeled_hatids 

@@ -1391,17 +1391,19 @@ print "miscutils: loading twomass_info_for_fields.."
 twomass_info_for_field = { field : twomass_info_file(field) for field in fields_to_analyze }
 
 
-def get_bagged_samples(Categories, size):
+def get_bagged_samples(Categories, size, ftest=0.):
 	Samples = {}
 	for ID in Categories:
 		if not Categories[ID] in Samples: Samples[Categories[ID]] = [ ID ]
 		else: Samples[Categories[ID]].append(ID)
 
 	bags = []
+	test_bag = []
+	num_test = { cat : int(ftest)*len(Samples[cat]) for cat in Samples }
 	for i in range(size):
 		bag = []
 		for cat in Samples:
-			di = int( 1./float(size) * len(Samples[cat]) )
+			di = int( 1./float(size) * (len(Samples[cat])-num_test[cat]) )
 			i1, i2 = i*di, (i+1)*di
 			if i == size - 1:
 				bag.extend(Samples[cat][i1:])
@@ -1411,8 +1413,11 @@ def get_bagged_samples(Categories, size):
 
 		np.random.shuffle(bag)
 		bags.append(bag)
-
-	return bags
+	if ftest > 0:
+		for cat in Samples:
+			test_bag.extend(Samples[cat][-num_test[cat]:])
+		np.random.shuffle(test_bag)
+	return bags, test_bag
 
 def composite_prediction(ModelPreds, Class, clfrs=None):
 	if clfrs is None: 

@@ -20,7 +20,7 @@ if RUNNING_ON_DELLA:
 	parent_dir = '/home/jah5/rrlyr_search/rrlyrclassification'
 	SCRATCH = "/tigress/jah5/rrlyr_scratch"
 	information_dir = "%s/information"%(SCRATCH)
-	force_redo = False
+	force_redo = True
 else:
 	parent_dir = '/Users/jah5/Documents/Fall2014_Gaspar/rrlyr_classification'
 	#SCRATCH = '%s'%(parent_dir)
@@ -89,7 +89,7 @@ num = None
 min_ndets = 20
 nfolds = 50
 cutoff = 0.05
-overwrite = False
+overwrite = force_redo
 
 COL_TYPE = 'TF'
 COL_SELECTION = 'locally-brightest'

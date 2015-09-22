@@ -6,6 +6,7 @@ from sklearn.lda import LDA
 from sklearn.qda import QDA
 from sklearn.metrics import roc_curve, auc, accuracy_score
 
+from settings import *
 use_matplotlib = True
 if use_matplotlib: 
 	if RUNNING_ON_DELLA:
@@ -21,17 +22,18 @@ import utils.feature_selection as fs
 from utils.miscutils import *
 from utils.featureutils import *
 import utils.readhatlc as rhlc
-from settings import *
 import cPickle as pickle
 from mpi4py import MPI
 
 fit_model_weights = False
-
+ftest=0.05
 # Get rank and size of mpi process
 comm = MPI.COMM_WORLD
 nprocs = comm.Get_size()
 rank = comm.Get_rank()
 ROOT = (rank == 0)
+
+iteration = get_iteration_number() + 1 # We're making the next model!
 
 # Get the labeled HATIDs.
 logprint("Loading labeled HATIDs")
@@ -47,7 +49,7 @@ logprint("Getting features!")
 num_bags = nprocs
 num_iterations = 5
 
-btprs_comp, bfprs_comp = [], []
+btprs, bfprs = [], []
 
 # Instead of splitting the magnitude and other features into two models, look at 
 def MakeCompositeModelFromScratch(xtrain, ytrain, CLFR=lambda : RandomForestClassifier(**rfc_params)):
@@ -86,26 +88,24 @@ def process(feats):
 for Iter in range(num_iterations):
 	if rank > num_bags: break # right now we're operating on a 1 bag/core system.
 	if ROOT:
-
+	
 		# An extra bag for testing (and possibly the SVM decision maker)
 		if fit_model_weights:
-			bags = get_bagged_samples(categories, num_bags + 2)
+			bags, test_bag = get_bagged_samples(categories, num_bags + 1, ftest=ftest)
 		else:
-			bags = get_bagged_samples(categories, num_bags + 1)
+			bags, test_bag = get_bagged_samples(categories, num_bags, ftest=ftest)
 
 		for i,b in enumerate(bags):
 			ncats = len(np.unique([ categories[ID] for ID in b ]))
 			if ncats < 2: raise Exception("bag number %d only has one class!"%(i))
 
-			# First and last bag are reserved for:
-			#    first bag :  The feature bag that Root uses
-			#    last bag  :  The feature bag that's used for testing/cross-validation
-			if i == 0 or i == len(bags) - 1: continue
+			# First bag is reserved for the feature bag that Root uses
+			if i == 0: continue
 			FFs = { ID : All_Features[ID] for ID in b }
 			comm.send(obj=FFs, dest=i, tag=0)
 
 		# Features to test this particular bagged model.
-		Testing_Features = { ID : All_Features[ID] for ID in bags[-1] }
+		Testing_Features = { ID : All_Features[ID] for ID in test_bag }
 
 		# (This is the list of full features for the ROOT node)
 		Full_Features = { ID : All_Features[ID] for ID in bags[0] }
@@ -142,7 +142,7 @@ for Iter in range(num_iterations):
 	for train_index, test_index in StratifiedKFold(rfc['labels'], n_folds=nfolds,shuffle=True):
 
 		fold_number += 1
-		logprint("  training fold %d; %d training RR Lyrae"%(fold_number, len([ l for l in MagLabels[train_index] if l == 1 ])))
+		logprint("  training fold %d; %d training RR Lyrae"%(fold_number, len([ l for l in rfc['labels'][train_index] if l == 1 ])))
 
 		X_train,   X_test 				= rfc['observations'][train_index], rfc['observations'][test_index]
 		IDs_train, IDs_test 			= rfc['hatids'][train_index], rfc['hatids'][test_index]
@@ -194,8 +194,8 @@ AUC (Both)  = %.3f +/- %.3f\n\t\
 
 		root_scaler, root_model = MakeCompositeModelFromScratch(X_train, rfc['labels'])
 
-		models = [ root_comp_model ]
-		scalers = [ root_comp_scaler ]
+		models = [ root_model ]
+		scalers = [ root_scaler ]
 
 		status = MPI.Status()
 
@@ -209,14 +209,14 @@ AUC (Both)  = %.3f +/- %.3f\n\t\
 			
 
 		# Put all of these models into bags
-		BaggedModel = BaggedModel(scalers, models)
+		bModel = BaggedModel(scalers, models)
 
 		# You can fit an SVM decision maker if you want; otherwise it'll select the maximum score.
 		if fit_model_weights: 
 			X_svm_train = svm['observations']
 			Y_svm_train = svm['labels'] 
 
-			BaggedModel.fit(X_svm_train,Y_svm_train)
+			bModel.fit(X_svm_train,Y_svm_train)
 
 		# Root file names of each model
 		bagged_model_rootname = "%s/bagged_comp_clfr_iter%04d"%(model_output_dir, iteration)
@@ -225,19 +225,19 @@ AUC (Both)  = %.3f +/- %.3f\n\t\
 		# TODO: re-train on ALL labeled data (these are only trained on MOST of the labeled data for
 		#       cross-validation purposes.)
 		logprint("Saving bagged model.")
-		BaggedModel.save(bagged_model_rootname)
+		bModel.save(bagged_model_rootname)
 
 
 		# Now cross validate!
 		logprint("Cross validating!!", all_nodes=True)
 
-		TestProbs = BaggedModel.predict_proba(X_test)
+		TestProbs = bModel.predict_proba(X_test)
 		TestProbs = np.array([ p[1] for p in TestProbs ])
 
 		logprint("evaluating cross validation results!", all_nodes=True)
 		Y_test = test['labels']
 
-		tpr, fpr, _ = roc_curve(Y_test, 1. - CompTestProbs)
+		tpr, fpr, _ = roc_curve(Y_test, 1. - TestProbs)
 
 		btprs.append(tpr)
 		bfprs.append(fpr)
@@ -253,16 +253,16 @@ if use_matplotlib and ROOT:
 	f = plt.figure(figsize=(4,4),tight_layout=True )
 	ax = f.add_subplot(111)
 
-	AddROCtoAxis(ax, btprs, bfprs, tpr_range=[0.99, 1], fpr_range=[0.0, 0.4])
+	AddROCtoAxis(ax, btprs, bfprs, tpr_range=[0.998, 1], fpr_range=[0.0, 0.4])
 	ax.set_title("Model iteration %d"%(iteration))
 	f.suptitle("Bagged model (%d bags)"%(num_bags))
-	f.savefig('%s/bagged_model_iter%d_cross_validation.png'%(parent_dir))
+	f.savefig('%s/bagged_model_iter%d_cross_validation.png'%(parent_dir, iteration))
 
-	PlotRandomForestImportances( BaggedModel.models,[  rfc['keylist'] for i in range(len(BaggedModel.models)) ], savefig='%s/bagged_model_iter%d_feature_imps.png'%(parent_dir ))
+	PlotRandomForestImportances( bModel.models,[  rfc['keylist'] for i in range(len(bModel.models)) ], savefig='%s/bagged_model_iter%d_feature_imps.png'%(parent_dir, iteration ))
 	
 
 if ROOT:
-	aucs = [ auc(fpr, tpr) for fpr, tpr in zip(bfprs_comp, btprs_comp) ]
+	aucs = [ auc(fpr, tpr) for fpr, tpr in zip(bfprs, btprs) ]
 
 	print "BAGGED MODEL AUC:  %.3f +/- %.5f"%(np.mean(aucs), np.std(aucs))
 	
