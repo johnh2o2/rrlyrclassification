@@ -248,7 +248,7 @@ HAT-094-0001548.epdlc  HAT-094-0001548.epdlog  HAT-094-0001548.rlc  HAT-094-0001
 
 # TODO:
 * Run current implementation on 145 + 219 ON DELLA.
-	
+* Generate timing information. How long / lightcurve?
 * Implement SSRFC method (in its own module). Test on some example datasets.
 * Write a general set of convergence functions (or use anything given by sklearn)
 	* Want to know:
