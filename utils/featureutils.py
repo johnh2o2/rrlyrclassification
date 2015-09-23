@@ -399,7 +399,7 @@ def get_obs_from_feats(feats, klist):
 	for f in feats:
 		obs = []
 		for k in klist:
-			obs.append(feats[i][k])
+			obs.append(feats[f][k])
 		observations.append(obs)
 	return observations	
 
