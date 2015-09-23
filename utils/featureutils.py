@@ -394,7 +394,23 @@ def get_mc_fit_features(features, pcov_file, N=100 ):
 	#print len(feats), feats[0]
 	return feats
 
-def process(feats, iteration=None):
+def process_new2(feats, iteration=None):
+
+	if iteration is None:
+		iteration = get_iteration_number()
+
+	rootname, skip_features, vartypes_to_classify, keylist = pickle.load(open(get_classifier_fname(iteration),'rb'))
+
+	logprint("  Cleaning features...")
+	feats = CleanFeatures(feats)
+
+	logprint("  Adding custom features...")
+	feats = AddCustomFeatures(feats)
+
+
+	return feats, observations
+
+def process_new(feats, iteration=None):
 
 	if iteration is None:
 		iteration = get_iteration_number()
@@ -433,9 +449,7 @@ def process(feats, iteration=None):
 
 def translate_features(features, iteration):
 	
-	feats, magfeats, otherfeats, magobs,  otherobs = process(features, iteration)
-
-	observations = ZipAndMerge(magobs, otherobs)
+	feats, observations = process_new2(features, iteration)
 
 	return observations
 
