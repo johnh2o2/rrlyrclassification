@@ -394,7 +394,33 @@ def get_mc_fit_features(features, pcov_file, N=100 ):
 	#print len(feats), feats[0]
 	return feats
 
-def process(feats, iteration=None):
+def get_obs_from_feats(feats, klist):
+	observations = []
+	for f in feats:
+		obs = []
+		for k in klist:
+			obs.append(feats[f][k])
+		observations.append(obs)
+	return observations	
+
+def process_new2(feats, iteration=None):
+
+	if iteration is None:
+		iteration = get_iteration_number()
+
+	rootname, skip_features, vartypes_to_classify, keylist = pickle.load(open(get_classifier_fname(iteration),'rb'))
+
+	logprint("  Cleaning features...")
+	feats = CleanFeatures(feats)
+
+	logprint("  Adding custom features...")
+	feats = AddCustomFeatures(feats)
+	
+	observations = get_obs_from_feats(feats, keylist)
+
+	return feats, observations
+
+def process_new(feats, iteration=None):
 
 	if iteration is None:
 		iteration = get_iteration_number()
@@ -413,29 +439,14 @@ def process(feats, iteration=None):
 	magfeats, otherfeats = SplitFeatures(feats, mag_features)
 
 	logprint("  Making observations...")
-	if not magfeats is None:
-		magobs = []
-		for i in magfeats:
-			obs = []
-			for k in mag_keylist:
-				obs.append(magfeats[i][k])
-			magobs.append(obs)
-
-	if not otherfeats is None:
-		otherobs = []
-		for i in otherfeats:
-			obs = []
-			for k in other_keylist:
-				obs.append(otherfeats[i][k])
-			otherobs.append(obs)
+	magobs = get_obs_from_feats(magfeats, mag_keylist)
+	otherobs = get_obs_from_feats(otherfeats, other_keylist)
 
 	return feats, magfeats, otherfeats, magobs, otherobs
 
 def translate_features(features, iteration):
 	
-	feats, magfeats, otherfeats, magobs,  otherobs = process(features, iteration)
-
-	observations = ZipAndMerge(magobs, otherobs)
+	feats, observations = process_new2(features, iteration)
 
 	return observations
 

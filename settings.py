@@ -7,7 +7,7 @@ import numpy as np
 import cPickle as pickle
 
 RUNNING_ON_DELLA = True
-model_prefix = "rrab_v1"
+model_prefix = "rrab_v2"
 fields_to_analyze = [ '145', 'gcvs' ]
 min_score = 0.05
 min_frac_above_min_score = 0.1
@@ -20,14 +20,14 @@ if RUNNING_ON_DELLA:
 	parent_dir = '/home/jah5/rrlyr_search/rrlyrclassification'
 	SCRATCH = "/tigress/jah5/rrlyr_scratch"
 	information_dir = "%s/information"%(SCRATCH)
-	force_redo = True
+	force_redo = False
 else:
 	parent_dir = '/Users/jah5/Documents/Fall2014_Gaspar/rrlyr_classification'
 	#SCRATCH = '%s'%(parent_dir)
 	DYLD_LIBRARY_PATH = '/opt/local/lib'
 	SCRATCH = "%s/SCRATCH"%(parent_dir)
 	information_dir = "%s/information"%(parent_dir)
-	force_redo = True
+	force_redo = False
 
 
 	#NFILES_MAX = 10
