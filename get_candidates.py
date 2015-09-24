@@ -88,12 +88,13 @@ if ROOT:
 	# Classify ids
 	logprint(" get_candidates: testing hatids!")
 	results = msl.master(hatids)
-	for ID, status in results:
+	for ID, scores, status in results:
 		if status is None and not ID in bad_ids:
 			BAD_IDS.append(ID)
 		elif status:
 			CANDIDATES.append(ID)
-
+		pickle.dump(scores, open(get_scores_fname(ID, iteration), 'wb'))
+	
 	# Print results
 	print "%d total hatids"%(len(hatids))
 	print "%d bad ids"%(len(BAD_IDS))
@@ -102,10 +103,10 @@ if ROOT:
 	# Save results
 	pickle.dump(BAD_IDS, open(get_bad_ids_fname(iteration), 'wb'))
 	pickle.dump(CANDIDATES, open(get_candidate_fname(iteration), 'wb'))
-
+	
 else:
 	msl.slave(lambda hatid : (hatid, generate_features(hatid, field=hatid_field_list[hatid])))#, keylist=keylists[hatid_field_list[hatid]])))
-	msl.slave(lambda hatid : (hatid, test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score, iteration, N=nmc)))
-
+	msl.slave(lambda hatid : (hatid, ) + test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score, iteration, N=nmc))
+	
 
 logprint("               : done.")
