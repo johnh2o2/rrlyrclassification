@@ -31,6 +31,7 @@ nprocs = comm.Get_size()
 rank = comm.Get_rank()
 ROOT = (rank == 0)
 
+# TODO: get ALL hatids
 hatids = [ hatids_in_field ]
 
 def in_equilibrium(scores):
@@ -43,11 +44,24 @@ def in_equilibrium(scores):
 
 btprs_comp, bfprs_comp = [], []
 
-def MakeModel(xtrain, ytrain, CLFR=lambda : RandomForestClassifier(**rfc_params)):
+def make_model(xtrain, ytrain, CLFR=lambda : RandomForestClassifier(**rfc_params)):
 	clfr = CLFR()
 	clfr.fit(xtrain, ytrain)
 	return None, clfr
 
+def process(feats):
+	logprint("  Cleaning features...")
+	feats = CleanFeatures(feats)
+
+	logprint("  Adding custom features...")
+	feats = AddCustomFeatures(feats)
+
+	hatids, keylist, observations, labels = MakeObservations(feats, categories)
+
+	return feats, hatids, keylist, observations, labels
+
+
+# Load all features
 if ROOT:
 	if nprocs > 1:
 		
@@ -64,16 +78,7 @@ if ROOT:
 else:
 	msl.slave(LoadAllFeatures)
 
-def process(feats):
-	logprint("  Cleaning features...")
-	feats = CleanFeatures(feats)
 
-	logprint("  Adding custom features...")
-	feats = AddCustomFeatures(feats)
-
-	hatids, keylist, observations, labels = MakeObservations(feats, categories)
-
-	return feats, hatids, keylist, observations, labels
 
 
 for Iter in range(num_iterations):

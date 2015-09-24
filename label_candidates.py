@@ -8,24 +8,18 @@ import utils.featureutils as futils
 import settings
 import cPickle as pickle
 import argparse
+from math import *
+
+
+SMALL = 1E-5
+show_fit = True
 
 parser = argparse.ArgumentParser(description='Visualize/label candidates')
-
-parser.add_argument('--iteration', 
-				dest 	= 'iteration', 
-				default	= mutils.get_iteration_number(),
-				type    = int,
-				help	= 'Iteration to visualize/label')
-
-parser.add_argument('--candidate-file',
-				action 	= 'store_true',
-				help	= 'File containing list of candidates')
-	)
 
 parser.add_argument('--include-labeled', 
 				action  = 'store_true',
 				help	= 'Dont skip already-labeled candidates')
-	)
+	
 
 parser.add_argument('--output-file', 
 				dest 	= 'outputfile', 
@@ -47,52 +41,67 @@ parser.add_argument('--save',
 				action 	= 'store_true', 
 				help 	= 'Save the results.')
 
+parser.add_argument('--results', 
+				help 	= 'Results file; this will be used to add to labeled data.')
+
+parser.add_argument('--tarfile',
+				help    = 'Tar file containing features, scores and lightcurves from candidates')
+
 args = parser.parse_args()
 
+tarfile = args.tarfile
 visualize = args.visualize
 save = args.save
-iteration = args.iteration
 include_labeled = args.include_labeled
+results = args.results
+
+if results is None and tarfile is None:
+	raise Exception(" Need to specify either results or tarfile")
 
 # Where do we store the results of the labeling?
-if args.outputfile is None and save:
-	candidate_results_fname = settings.get_candidate_results_fname(iteration)
-elif save:
+if args.outputfile is None:
+	candidate_results_fname = "candidate_results.dat"
+else:
 	candidate_results_fname = args.outputfile
-else:
-	candidate_results_fname = "label_candidates.results"
 
-# Get list of candidate HAT ID's:
-if args.candidatefile is None:
-	candidate_fname = settings.get_candidate_fname(iteration)
-else:
-	candidate_fname = args.candidate_file
 
-SMALL = 1E-5
-show_fit = True
 
-# Load candidate ID's
-candidate_ids = pickle.load(open(candidate_fname, 'rb'))
+def unpack(tarfile):
+	tarfile_rootname = tarfile.split("/")[-1]
+	os.system("tar xvf %s -C %s"%(tarfile, settings.candidates_dir))
+	os.system("cp %s %s/"%(tarfile, settings.candidates_dir))
 
-# Prune out the ones that are already labeled
-labeled_ids, categories = futils.LoadLabeledHatIDs()
-candidate_ids = [ ID for ID in candidate_ids if not ID in labeled_ids ]
+	cparent_dir = "%s/%s"%(settings.candidates_dir,tarfile_rootname.split('.')[-2])
+	lcdir = "%s/lc"%(cparent_dir)
+	features_dir = "%s/features"%(cparent_dir)
+	scores_dir = "%s/scores"%(cparent_dir)
+	return cparent_dir, lcdir, features_dir, scores_dir
 
-# Quit if there's nothing to do!
-if len(candidate_ids) == 0 and not include_labeled:
-	print "No ID's need to be labeled!"
-	sys.exit()
+if not tarfile is None:
+	# Unpack the tarfile
+	pdir, lcdir, fdir, sdir = unpack(tarfile)
 
-# Fetch lightcurve filenames
-candidate_filenames = [ mutils.get_lc_fname(ID) for ID in candidate_ids ]
+	# Load candidate ID's
+	candidate_ids = pickle.load(open("%s/candidate_ids.pkl"%(pdir), 'rb'))
 
-# Find the files that aren't in the data directory yet:
-missing_ids = [ ID for fname,ID in zip(candidate_filenames, candidate_ids) if not os.path.exists(fname) ]
-if len(missing_ids) > 0:
-	print "%d missing ids:"%(len(missing_ids))
-	print missing_ids
+	# Prune out the ones that are already labeled (if we want to)
+	try:
+		labeled_ids, categories = futils.LoadLabeledHatIDs()
+		candidate_ids = [ ID for ID in candidate_ids if include_labeled or not ID in labeled_ids ]
+	except:
+		print "Warning: Could not open labeled hatids!"
 
-All_Features = LoadAllFeatures([ ID for ID in candidate_ids if not ID in missing_ids ])
+	# Quit if there's nothing to do!
+	if len(candidate_ids) == 0:
+		print "No ID's need to be labeled!"
+		sys.exit()
+
+	# Fetch lightcurve filenames
+	candidate_filenames = [ "%s/%s-full.tfalc.gz"%(lcdir, ID) for ID in candidate_ids ]
+	candidate_feature_filenames = [ "%s/%s-feats.pkl"%(fdir, ID) for ID in candidate_ids ]
+	candidate_score_filenames = [ "%s/%s.scores"%(sdir, ID) for ID in candidate_ids ]
+
+	All_Features = { ID: pickle.load(open(feat_fname, 'rb')) for ID, feat_fname in zip(candidate_ids, candidate_feature_filenames) }
 
 def ax_candidate_pf(ax, t, y, opts):
     """ Adds a phase-folded plot to a matplotlib.Axis instance
@@ -116,13 +125,13 @@ def ax_candidate_pf(ax, t, y, opts):
     ax.scatter(t , y, label="P=%.4f days (Pbest=%.4f)"%(opts['period'], period),c='b'
         ,alpha=0.05, marker=',')
 
-    amplitudes, phases, C = translate_features_to_fit_params(features)
-    fitfunc = lambda T : C + sum( [ A * cos(2*np.pi*N*t - PHI) for A,N,PHI in zip(amplitudes, np.arange(1, len(amplitudes) + 1) , phases) ] )
-    
+    amplitudes, phases, C = mutils.translate_features_to_fit_params(features)
 
+    fitfunc = lambda T : C + sum( [ A * cos(2*np.pi*N*T - PHI) for A,N,PHI in zip(amplitudes, np.arange(1, len(amplitudes) + 1) , phases) ] )
+   
     if show_fit and 2 * abs(period - opts['period'])/(period + opts['period']) < SMALL:
     	tfit = np.linspace(0, 1)
-    	yfit = np.array( [ fitfunc( T  - phase) for T in tfit ])
+    	yfit = np.array( [ fitfunc( T  - phase*2*np.pi) for T in tfit ])
     	ax.plot( tfit, yfit, lw=2, color='r')
 
     ax.set_ylabel(opts['ylabel'])
@@ -134,20 +143,24 @@ def ax_candidate_pf(ax, t, y, opts):
 
     ax.format_coord = lambda x, y : ''
 
+class CustomVisualizer(Visualizer):
+	def __init__(self, *args, **kwargs):
+		super( CustomVisualizer, self).__init__( *args, **kwargs)
+		self.phase_plot_axis_function = ax_candidate_pf
+		self.set_phase_folded()
+
 if visualize:
 	# Labels that the user can give to each lightcurve
-	flags = [ 'RRab', 'Not-variable', 'Variable-not-RRab' ] 
-	shortcuts = { 'q' : 'RRab', 'w' : 'Not-variable', 'e' : 'Variable-not-RRab' } # hit these keys on the keyboard to set each of the labels...
+	flags = [ 'RRab', 'Not-variable', 'Variable-not-RRab', 'Possible-RRab' ] 
+	shortcuts = { 'q' : 'RRab', 'w' : 'Possible-RRab', 'e' : 'Variable-not-RRab', 'r' : 'Not-variable' } # hit these keys on the keyboard to set each of the labels...
 
 	# Start the visualizer
 	root = Tk()
 	root.geometry('+250+80') 
 	root.wm_title("Label RR Lyrae candidates")
-	app = Visualizer(root, candidate_filenames, 
+	app = CustomVisualizer(root, candidate_filenames, 
 						logfile=candidate_results_fname, flag_shortcuts=shortcuts, flags=flags, jah=True)
 
-	app.phase_plot_axis_function = ax_candidate_pf
-	app.set_phase_folded()
 	root.mainloop()
 
 # Now read in and interpret the results

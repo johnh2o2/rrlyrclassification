@@ -6,7 +6,7 @@ from sklearn.qda import QDA
 import numpy as np
 import cPickle as pickle
 
-RUNNING_ON_DELLA = True
+RUNNING_ON_DELLA = False
 model_prefix = "rrab_v2"
 fields_to_analyze = [ '145', 'gcvs' ]
 min_score = 0.5
@@ -44,6 +44,7 @@ if not os.path.isdir(SCRATCH):
 
 LCCACHE = "%s/LCCACHE"%(SCRATCH)
 data_dir = '%s/data'%(SCRATCH)
+candidates_dir = "%s/candidates"%(SCRATCH)
 model_dir = "%s/models"%(SCRATCH)
 model_output_dir = "%s/%s"%(model_dir, model_prefix)
 feat_dir = "%s/features"%(SCRATCH)
@@ -51,7 +52,7 @@ hatids_in_fields_dir = "%s/hatids_in_field_lists"%(information_dir)
 keylist_dir = '%s/keylists'%(information_dir)
 twomass_dir = "%s/twomass"%(information_dir)
 
-for Dir in [ LCCACHE, data_dir, model_dir, model_output_dir, feat_dir, hatids_in_fields_dir ]:
+for Dir in [ LCCACHE, data_dir, model_dir, model_output_dir, feat_dir, hatids_in_fields_dir, candidates_dir ]:
 	if not os.path.isdir(Dir): os.makedirs(Dir)
 
 if not os.path.isdir(information_dir) and RUNNING_ON_DELLA:
