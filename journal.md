@@ -239,12 +239,20 @@ HAT-094-0001548.epdlc  HAT-094-0001548.epdlog  HAT-094-0001548.rlc  HAT-094-0001
 				scores[source].append( mean([ model.score(source[i]) for model in Models]) )
 
 ```
+
+* Attempted that last idea; not working *at all* (using an SVM). It's working *so* poorly that I suspect there's a bug in the code...
 * Yet *another* idea
 	* This is effectively a (4d-ish) problem: 2d kohonen for color + 2d kohonen for LC shape
 	* You could probably train
 		1. Kmap_color   
 		2. Kmap_lcshape 
 		3. TSVM(1, 2) -> score
+
+# September 23
+* Goal for today:
+	* Streamline labeling process
+		* Implementing simple process to transfer -> label -> transfer results back. 
+		* 
 
 # TODO:
 * Run current implementation on 145 + 219 ON DELLA.
