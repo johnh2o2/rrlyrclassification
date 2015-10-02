@@ -8,7 +8,7 @@ from sklearn.qda import QDA
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.metrics import roc_curve, auc, accuracy_score
 from sklearn.grid_search import GridSearchCV
-
+from time import time
 from settings import *
 if RUNNING_ON_DELLA:
 	print "featureutils: using agg backend for mpl"
@@ -327,11 +327,14 @@ def LoadFeatures(ID):
 			raise Exception("Cannot load features for HAT-ID %s (filename: '%s')"%(ID, feat_fname))
 	else:
 		logprint("                             : no features found for %s; generating them!"%(ID), all_nodes=True)
+		t0 = time()
 		LC = load_lightcurve(ID)
 		if LC is None: 
 			logprint("                             : %s: LC is NONE :("%(ID), all_nodes=True)
 			return None
 		features = fs.get_features(LC, save_pcov=True, pcov_file=get_pcov_file(ID))
+		tf = time() - t0
+		logprint("                             : %s finished; time = %.5f seconds"%(ID, tf), all_nodes=True)
 		pickle.dump(features, open(feat_fname, 'wb'))
 		return features
 def LoadAllFeatures(IDs):
@@ -477,7 +480,7 @@ def test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score, iterati
 	
 	# If features is None, this is a bad ID
 	if features is None:
-		return None
+		return None, False
 		
 	# Obtain MC scores
 	scores = score_features(features, pcov_file=get_pcov_file(hatid), iteration=iteration, N=N)
@@ -496,7 +499,7 @@ def generate_features(hatid,  field=None, keylist=None, save_full_lc=True):
 	logprint("  generate_features -- %s"%(hatid), all_nodes=True)
 	# Skip if this is a known bad id
 	if hatid in bad_ids: return False
-
+	t0 = time()
 	# Get the field if not specified
 	if field is None:
 		field = get_field_of(hatid)
@@ -507,6 +510,8 @@ def generate_features(hatid,  field=None, keylist=None, save_full_lc=True):
 		lc = load_full_tfalc_from_scratch(hatid, field=field, keylist_dat=keylist, save_full_lc=True)
 		features = fs.get_features(lc, save_pcov=True, pcov_file=get_pcov_file(hatid))
 		pickle.dump(features, open(feat_fname, 'wb'))
+		tf = time() - t0
+		logprint("  generate_features -- %s; DONE -- T = %.5f seconds."%(hatid, tf), all_nodes=True)
 	else:
 		try:
 			features = pickle.load(open(feat_fname, 'rb'))
@@ -515,6 +520,7 @@ def generate_features(hatid,  field=None, keylist=None, save_full_lc=True):
 			lc = load_full_tfalc_from_scratch(hatid, field=field, keylist_dat=keylist)
 			features = fs.get_features(lc, save_pcov=True, pcov_file=get_pcov_file(hatid))
 			pickle.dump(features, open(feat_fname, 'wb'))
+			
 	if features is None: return False
 	return True
 
