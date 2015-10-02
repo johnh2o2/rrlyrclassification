@@ -38,3 +38,15 @@ The directory setup is a bit overwhelming at the moment, but the basics of getti
 4. Run `label_candidates.py` **to be written** to visualize and manually label the candidates
 5. Repeat 2 - 4 as many times as necessary until no more new sources are found.
 
+
+# Tutorials
+
+###Connecting to `della` via terminal:
+	* Use `SonicWALL Mobile Connect` to connect to a VPN
+	* From terminal, do: `$ ssh della`
+
+###Setting up environment
+	* Clone the `rrlyrclassifiation` project to home directory: `git clone git@github.com:johnh2o2/rrlyrclassification.git`
+	* [optional] Clone the `pyvislc` project to home directory: `git@github.com:johnh2o2/pyvislc.git`
+	* Install additional modules
+	* Run `python setup.py install --user` 

@@ -178,6 +178,7 @@ while True:
 	if len(splits) > 1: 
 		CLASS = splits[1]
 		print CLASS
+		if Class == 'Possible-RRab': continue # Don't label things unless you're sure!
 		if CLASS != 'RRab': CLASS = "none"
 		else: CLASS = "RRAB"
 	else: CLASS = None
