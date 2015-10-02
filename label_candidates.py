@@ -1,11 +1,12 @@
-from pyvislc.vislc import Visualizer
-import utils.readhatlc as rhlc
-from Tkinter import Tk
+import settings
+if not settings.RUNNING_ON_DELLA:
+	from pyvislc.vislc import Visualizer
+	from Tkinter import Tk
 import numpy as np
+import utils.readhatlc as rhlc
 import os, sys, gzip
 import utils.miscutils as mutils
 import utils.featureutils as futils
-import settings
 import cPickle as pickle
 import argparse
 from math import *
@@ -15,6 +16,9 @@ SMALL = 1E-5
 show_fit = True
 
 parser = argparse.ArgumentParser(description='Visualize/label candidates')
+
+parser.add_argument('--iteration',
+				help	= 'Current iteration')
 
 parser.add_argument('--include-labeled', 
 				action  = 'store_true',
@@ -54,6 +58,7 @@ visualize = args.visualize
 save = args.save
 include_labeled = args.include_labeled
 results = args.results
+iteration = args.iteration
 
 if results is None and tarfile is None:
 	raise Exception(" Need to specify either results or tarfile")
@@ -64,6 +69,8 @@ if args.outputfile is None:
 else:
 	candidate_results_fname = args.outputfile
 
+if settings.RUNNING_ON_DELLA and not results is None:
+	candidate_results_fname = results
 
 
 def unpack(tarfile):
@@ -143,13 +150,14 @@ def ax_candidate_pf(ax, t, y, opts):
 
     ax.format_coord = lambda x, y : ''
 
-class CustomVisualizer(Visualizer):
-	def __init__(self, *args, **kwargs):
-		super( CustomVisualizer, self).__init__( *args, **kwargs)
-		self.phase_plot_axis_function = ax_candidate_pf
-		self.set_phase_folded()
 
 if visualize:
+	
+	class CustomVisualizer(Visualizer):
+		def __init__(self, *args, **kwargs):
+			super( CustomVisualizer, self).__init__( *args, **kwargs)
+			self.phase_plot_axis_function = ax_candidate_pf
+			self.set_phase_folded()
 	# Labels that the user can give to each lightcurve
 	flags = [ 'RRab', 'Not-variable', 'Variable-not-RRab', 'Possible-RRab' ] 
 	shortcuts = { 'q' : 'RRab', 'w' : 'Possible-RRab', 'e' : 'Variable-not-RRab', 'r' : 'Not-variable' } # hit these keys on the keyboard to set each of the labels...
@@ -189,6 +197,10 @@ mutils.logprint(" label_candidates : done.")
 
 # Now save these into the global "labeled HatIDs" file.
 if save:
+	if iteration is None:
+		iteration = mutils.get_iteration_number()
+
+	labeled_ids, categories = futils.LoadLabeledHatIDs()
 	mutils.logprint(" label_candidates : Now saving the results!")
 	for ID in classification_results:
 		CLASS = classification_results[ID]

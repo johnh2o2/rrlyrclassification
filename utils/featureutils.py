@@ -453,15 +453,16 @@ def translate_features(features, iteration):
 	
 
 def score_features(features, pcov_file, iteration=0, N=1000, kind="other"):
-
+	
+	if features is None: return None
 	model = BaggedModel()
 	model.load(get_classifier_fname(iteration))
 
-	#feats = get_mc_fit_features(features,pcov_file,N=N)
-	#Feats = { i : f for i, f in enumerate(feats)  }
-	#observations = translate_features(Feats, iteration)
+	feats = get_mc_fit_features(features,pcov_file,N=N)
+	Feats = { i : f for i, f in enumerate(feats)  }
+	observations = translate_features(Feats, iteration)
 
-	observations = translate_features({ 0: features}, iteration)
+	#observations = translate_features({ 0: features}, iteration)
 	scores = model.predict_proba(observations)
 	#print scores
 	#scores = model.predict_proba(observations)
@@ -469,6 +470,7 @@ def score_features(features, pcov_file, iteration=0, N=1000, kind="other"):
 	#scores = [ model.predict_proba(observations) ]
 
 	return np.array([ s[1] for s in scores ])
+
 
 def test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score, iteration, N=1000):
 	features = LoadFeatures(hatid)
@@ -481,15 +483,14 @@ def test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score, iterati
 	scores = score_features(features, pcov_file=get_pcov_file(hatid), iteration=iteration, N=N)
 
 	# Mark ID if it's a candidate
-
 	if is_candidate(scores, min_score, min_frac_above_min_score): 
 		#plt.hist(scores, bins = 100)
 		#plt.show(block=True)
 		print "%s : %.4f %.4f [%.4f +/- %.4f] (%d/%d above %.3e)"%(hatid, min(scores), max(scores), np.mean(scores), np.std(scores), len([ s for s in scores if s > min_score ]), len(scores), min_score)
-		return True
+		return scores, True
 
 	else: 
-		return False
+		return scores, False
 
 def generate_features(hatid,  field=None, keylist=None, save_full_lc=True):
 	logprint("  generate_features -- %s"%(hatid), all_nodes=True)
