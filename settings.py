@@ -6,7 +6,7 @@ from sklearn.qda import QDA
 import numpy as np
 import cPickle as pickle
 
-RUNNING_ON_DELLA = True
+RUNNING_ON_DELLA = False
 model_prefix = "rrab_v2"
 fields_to_analyze = [ '145', 'gcvs', '219' ]
 min_score = 0.2
@@ -37,8 +37,8 @@ else:
 
 
 if not os.path.isdir(SCRATCH):
-	print "Did not locate a 'SCRATCH' directory in the parent directory (%s)."%(parent_dir)
-	print "Either make a directory via `mkdir SCRATCH` or symlink to another location on the system"
+	print "The SCRATCH directory ('%s') does not exist yet."%(SCRATCH)
+	print "Make this directory first (or add a symlink to another directory at the expected SCRATCH location)"
 	print "WARNING: the SCRATCH directory may contain many large (~Gb) files. Make sure you have lots of free space."
 	sys.exit()
 

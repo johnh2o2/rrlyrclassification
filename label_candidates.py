@@ -12,7 +12,7 @@ import argparse
 from math import *
 
 
-SMALL = 1E-5
+SMALL = 1E-4
 show_fit = True
 
 parser = argparse.ArgumentParser(description='Visualize/label candidates')
@@ -111,44 +111,53 @@ if not tarfile is None:
 	All_Features = { ID: pickle.load(open(feat_fname, 'rb')) for ID, feat_fname in zip(candidate_ids, candidate_feature_filenames) }
 
 def ax_candidate_pf(ax, t, y, opts):
-    """ Adds a phase-folded plot to a matplotlib.Axis instance
+	""" Adds a phase-folded plot to a matplotlib.Axis instance
 
-        inputs:
-            ax          matplotlib.Axis instance to which phase-folded plot will be added
-            t           Central values of phase bins
-            y           Average magnitude in each phase bin
-            opts        Options (required, should contain 'ylabel', 'period', 'yerr' )
+	    inputs:
+	        ax          matplotlib.Axis instance to which phase-folded plot will be added
+	        t           Central values of phase bins
+	        y           Average magnitude in each phase bin
+	        opts        Options (required, should contain 'ylabel', 'period', 'yerr' )
 
-    """
-    ax.scatter(t , y, label="P=%.4f days"%(opts['period']),c='b'
-        ,alpha=0.05, marker=',')
-    V = opts['visualizer']
-    phase = V.phase_offset
-    HATID = V.lc['hatid']
-    #score = scores[HATID]
-    features = All_Features[HATID]
-    period = features['p1']
+	"""
+	inds = np.arange(len(t))
+	np.random.shuffle(inds)
+	add_ones = inds[:len(inds)/2]
+	T2 = [ T + 1. if i in add_ones else T for i,T in enumerate(t)  ]
 
-    ax.scatter(t , y, label="P=%.4f days (Pbest=%.4f)"%(opts['period'], period),c='b'
-        ,alpha=0.05, marker=',')
+	#ax.scatter(T2 , y, label="P=%.4f days"%(opts['period']),c='b'
+	#    ,alpha=0.05, marker=',')
 
-    amplitudes, phases, C = mutils.translate_features_to_fit_params(features)
+	V = opts['visualizer']
+	phase = V.phase_offset
+	HATID = V.lc['hatid']
+	#score = scores[HATID]
+	features = All_Features[HATID]
+	period = features['p1']
 
-    fitfunc = lambda T : C + sum( [ A * cos(2*np.pi*N*T - PHI) for A,N,PHI in zip(amplitudes, np.arange(1, len(amplitudes) + 1) , phases) ] )
-   
-    if show_fit and 2 * abs(period - opts['period'])/(period + opts['period']) < SMALL:
-    	tfit = np.linspace(0, 1)
-    	yfit = np.array( [ fitfunc( T  - phase*2*np.pi) for T in tfit ])
-    	ax.plot( tfit, yfit, lw=2, color='r')
+	if period != opts['period']:
+		V.set_phase_folded(period=period)
+		return
 
-    ax.set_ylabel(opts['ylabel'])
-    ax.set_xlabel("Phase")
-    ax.set_title("Phase-folded")
-    ax.set_xlim(0,1)
-    ax.legend(loc='upper right', fontsize=12)
-    ax.invert_yaxis()
+	ax.scatter(T2 , y, label="P=%.4f days (Pbest=%.4f)"%(opts['period'], period),c='b',alpha=0.05, marker=',')
 
-    ax.format_coord = lambda x, y : ''
+	amplitudes, phases, C = mutils.translate_features_to_fit_params(features)
+
+	fitfunc = lambda T : C + sum( [ A * cos(2*np.pi*N*T - PHI) for A,N,PHI in zip(amplitudes, np.arange(1, len(amplitudes) + 1) , phases) ] )
+
+	if show_fit and 2 * abs(period - opts['period'])/(period + opts['period']) < SMALL:
+		tfit = np.linspace(0, 2)
+		yfit = np.array( [ fitfunc( T - phase ) for T in tfit ])
+		ax.plot( tfit, yfit, lw=2, color='r')
+
+	ax.set_ylabel(opts['ylabel'])
+	ax.set_xlabel("Phase")
+	ax.set_title("Phase-folded")
+	ax.set_xlim(0,2)
+	ax.legend(loc='upper right', fontsize=9)
+	
+
+	ax.format_coord = lambda x, y : ''
 
 
 if visualize:
@@ -173,27 +182,31 @@ if visualize:
 
 # Now read in and interpret the results
 mutils.logprint(" label_candidates : Now reading in the results")
-f = open(candidate_results_fname, 'r')
-classification_results = {}
-while True:
-	line = f.readline()
-	if line == '': break
-	line = line.replace('\n', '')
+if os.path.exists(candidate_results_fname):
 
-	splits = line.split(' ')
-	assert(len(splits) <= 2)
-	ID = splits[0]
-	if len(splits) > 1: 
-		CLASS = splits[1]
-		print CLASS
-		if Class == 'Possible-RRab': continue # Don't label things unless you're sure!
-		if CLASS != 'RRab': CLASS = "none"
-		else: CLASS = "RRAB"
-	else: CLASS = None
+	f = open(candidate_results_fname, 'r')
+	classification_results = {}
+	while True:
+		line = f.readline()
+		if line == '': break
+		line = line.replace('\n', '')
 
-	classification_results[ID] = CLASS
-f.close()
-mutils.logprint(" label_candidates : done.")
+		splits = line.split(' ')
+		assert(len(splits) <= 2)
+		ID = splits[0]
+		if len(splits) > 1: 
+			CLASS = splits[1]
+			print CLASS
+			if CLASS == 'Possible-RRab': continue # Don't label things unless you're sure!
+			if CLASS != 'RRab': CLASS = "none"
+			else: CLASS = "RRAB"
+		else: CLASS = None
+
+		classification_results[ID] = CLASS
+	f.close()
+	mutils.logprint(" label_candidates : done.")
+else:
+	mutils.logprint(" label_candidates : No file %s (could just mean that you didn't label anything...)"%(candidate_results_fname))
 
 # Now save these into the global "labeled HatIDs" file.
 if save:

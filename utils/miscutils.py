@@ -1026,7 +1026,15 @@ def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_da
 		return save_and_return(None, hatid, save_full_lc)
 	# Obtain twomass/color data for hatid
 	if twomass_dat is None:
+
+		# Try loading twomass_info_for_field if it isn't loaded already...
+		if twomass_info_for_field is None: add_twomass_info_field(field)
+		if twomass_info_for_field is None: raise Exception("line 1033 in miscutils: tried to load twomass_info_for_field, but it's STILL None.")
+		
 		if is_gcvs(hatid) and 'gcvs' in fields_to_analyze:
+
+
+
 			if not hatid in twomass_info_for_field['gcvs']:
 				logprint("                    !             %s  !  No twomass information available for hatid in `gcvs` field."%(hatid), all_nodes=True)
 				return save_and_return(None, hatid, save_full_lc)
@@ -1333,6 +1341,11 @@ def get_2mass_data_for_hatid(hatid):
 	if field is None:
 		logprint("Warning (get_2mass_data): %s does not have a field."%(field))
 		return None
+	if twomass_info_for_field is None: add_twomass_info_field(field)
+	elif not field in twomass_info_for_field: add_twomass_info_field(field)
+
+	if twomass_info_for_field is None:
+		raise Exception("in get_2mass_data_for_hatid in miscutils. Twomass_info_for_field is None even after we tried to load it!!")
 	return twomass_info_for_field[field][hatid]
 	
 def make_2mass_data_for_field(field, client, sftp):
@@ -1395,8 +1408,20 @@ def get_hatid_field_list(fields):
 
 load_lightcurve = load_full_tfalc_from_scratch
 
-print "miscutils: loading twomass_info_for_fields.."
-twomass_info_for_field = { field : twomass_info_file(field) for field in fields_to_analyze }
+twomass_info_for_field = None
+def load_2mass_info_for_field():
+	print "miscutils: loading twomass_info_for_fields.."
+	global twomass_info_for_field
+	twomass_info_for_field = { field : twomass_info_file(field) for field in fields_to_analyze }
+
+
+def add_twomass_info_field(field):
+	print "miscutils: loading twomass_info_for_fields for field %s"%(field)
+	global twomass_info_for_field
+	if twomass_info_for_field is None: 
+		twomass_info_for_field = { field : twomass_info_file(field)}
+	else:
+		twomass_info_for_field[field] = twomass_info_file(field)
 
 
 def get_bagged_samples(Categories, size, ftest=0.):

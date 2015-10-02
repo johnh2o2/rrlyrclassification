@@ -50,3 +50,6 @@ The directory setup is a bit overwhelming at the moment, but the basics of getti
 	* [optional] Clone the `pyvislc` project to home directory: `git@github.com:johnh2o2/pyvislc.git`
 	* Install additional modules
 	* Run `python setup.py install --user` 
+	* Create SCRATCH directory in appropriate place; modify settings file
+	* Run `create_initial_labeled_hatids.py`
+	* On local system: `python label_candidates.py --tarfile candidates_1.tar --dont-save --visualize`
