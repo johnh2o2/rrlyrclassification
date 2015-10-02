@@ -24,10 +24,18 @@ ROOT = (rank == 0)
 
 
 HP = pickle.HIGHEST_PROTOCOL
-
+def get_logfile(rank):
+	return "%s/logfile.%04d"%(SCRATCH, rank)
+save_log_of_each_node = True
+terminal_printing = False
 def logprint(m, all_nodes=False):
-	if VERBOSE and all_nodes: print "node %d: %s "%(comm.rank, m)
-	elif VERBOSE and ROOT: print m
+	if VERBOSE and save_log_of_each_node:
+		msg = "node %d: %s"%(comm.rank, m)
+		f = open(get_logfile(rank), 'a')
+		f.write("%s\n"%(m))
+		f.close()
+	if VERBOSE and all_nodes and terminal_printing: print "node %d: %s "%(comm.rank, m)
+	elif VERBOSE and ROOT and terminal_printing: print m
 
 
 field_info = pickle.load(open(field_info_fname, 'rb'))
