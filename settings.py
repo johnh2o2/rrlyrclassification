@@ -6,7 +6,7 @@ from sklearn.qda import QDA
 import numpy as np
 import cPickle as pickle
 
-RUNNING_ON_DELLA = False
+RUNNING_ON_DELLA = True
 model_prefix = "rrab_v2"
 fields_to_analyze = [ '145', 'gcvs', '219' ]
 min_score = 0.2

@@ -92,9 +92,11 @@ def process(feats):
 	logprint("  Making observations...")
 	if not magfeats is None:
 		magids, magkl, magobs, maglabs = MakeObservations(magfeats, categories)
+	else:
+		magids, magkl, magobs, maglabs = None, None, None, None
 	otherids, otherkl, otherobs, otherlabs = MakeObservations(otherfeats, categories)
 
-	return feats, magfeats, otherfeats, magids, magkl, magobs, maglabs, otherkl, otherobs
+	return feats, magfeats, otherfeats, otherids, magkl, magobs, otherlabs, otherkl, otherobs
 
 
 for Iter in range(num_iterations):
@@ -108,7 +110,9 @@ for Iter in range(num_iterations):
 			bags = get_bagged_samples(categories, num_bags + 1)
 
 		for i,b in enumerate(bags):
+			print b
 			ncats = len(np.unique([ categories[ID] for ID in b ]))
+			print ncats
 			if ncats < 2: raise Exception("bag number %d only has one class!"%(i))
 
 			# First and last bag are reserved for:
@@ -126,16 +130,16 @@ for Iter in range(num_iterations):
 
 		# Get cross-validation features!
 		logprint("Generating cross validation data", all_nodes=True)
-		Testing_Features, Testing_MagFeatures, Testing_OtherFeatures, MagIDs, MagKeylist, \
-		Testing_MagObservations, Testing_MagLabels, OtherKeylist, Testing_OtherObservations = process(Testing_Features)
+		Testing_Features, Testing_MagFeatures, Testing_OtherFeatures, OtherIDs, MagKeylist, \
+		Testing_MagObservations, Testing_OtherLabels, OtherKeylist, Testing_OtherObservations = process(Testing_Features)
 
 		if fit_model_weights:
 			# Features to use for testing the SVM decision-maker
 			SVM_Features = { ID : All_Features[ID] for ID in bags[1] }
 			# Get the SVM decision-maker training features
 			logprint("Generating SVM training data")
-			SVM_Features, SVM_MagFeatures, SVM_OtherFeatures, MagIDs, MagKeylist, \
-			SVM_MagObservations, SVM_MagLabels, OtherKeylist, SVM_OtherObservations = process(SVM_Features)
+			SVM_Features, SVM_MagFeatures, SVM_OtherFeatures, OtherIDs, MagKeylist, \
+			SVM_MagObservations, SVM_OtherLabels, OtherKeylist, SVM_OtherObservations = process(SVM_Features)
 		
 	else:
 		status = MPI.Status()
@@ -143,11 +147,11 @@ for Iter in range(num_iterations):
 
 	# Process features
 	logprint("Processing features...")
-	Features, MagFeatures, OtherFeatures, MagIDs, MagKeylist, \
-	MagObservations, MagLabels, OtherKeylist, OtherObservations = process(Full_Features)
+	Features, MagFeatures, OtherFeatures, OtherIDs, MagKeylist, \
+	MagObservations, OtherLabels, OtherKeylist, OtherObservations = process(Full_Features)
 
-	OtherIDs = MagIDs
-	OtherLabels = MagLabels
+	MagIDs = OtherIDs
+	MagLabels = OtherLabels
 
 	logprint("  Using LDA to get the best color index")
 	# Use an LDA to get the best color index (linear combination of X_i - V)
@@ -319,9 +323,9 @@ AUC (Both)  = %.3f +/- %.3f\n\t\
 		BaggedOtherModel.save(bagged_other_model_rootname)
 
 		# <TESTING LOAD/SAVE
-		del BaggedCompModel
-		BaggedCompModel = BaggedModel()
-		BaggedCompModel.load(bagged_comp_model_rootname)
+		#del BaggedCompModel
+		#BaggedCompModel = BaggedModel()
+		#BaggedCompModel.load(bagged_comp_model_rootname)
 		'''
 		print "scalers and models..."
 		mno = 1
