@@ -60,6 +60,7 @@ def GCVS_GetVartypeClasses(vt):
 	for vtclass in variable_star_classes:
 		if vt in variable_star_classes[vtclass]:  classes.append(vtclass)
 	return classes
+
 def GCVS_GetVartypeNameToUse(vt):
 	vtclasses = GCVS_GetVartypeClasses(vt)
 
@@ -76,6 +77,7 @@ def GCVS_GetVartypeNameToUse(vt):
 		else: return classes[0]
 	if vt in vartypes_to_classify: return vt
 	return "none"
+
 def GCVS_GetRandomSample(num, cat):
 	inds = np.arange(len(cat))
 	np.random.shuffle(inds)
@@ -406,13 +408,15 @@ def get_obs_from_feats(feats, klist):
 		observations.append(obs)
 	return observations	
 
+
+
 def process_new2(feats, iteration=None):
 
 	if iteration is None:
 		iteration = get_iteration_number()
 
-	rootname, skip_features, vartypes_to_classify, keylist = pickle.load(open(get_classifier_fname(iteration),'rb'))
-
+	skip_features, vartypes_to_classify, keylist = pickle.load(open(get_classifier_information_fname(iteration),'rb'))
+	
 	logprint("  Cleaning features...")
 	feats = CleanFeatures(feats)
 

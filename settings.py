@@ -7,8 +7,9 @@ import numpy as np
 import cPickle as pickle
 
 RUNNING_ON_DELLA = True
-model_prefix = "rrab_v2"
+model_prefix = "rrab_v3"
 fields_to_analyze = [ '145', 'gcvs', '219' ]
+acceptable_tpr = 1 - 1E-3
 min_score = 0.2
 min_frac_above_min_score = 0.5
 nmc = 1000
@@ -28,12 +29,6 @@ else:
 	SCRATCH = "%s/SCRATCH"%(parent_dir)
 	information_dir = "%s/information"%(parent_dir)
 	force_redo = False
-
-
-	#NFILES_MAX = 10
-	#min_score = -1.0
-	#min_score = 0.05
-
 
 
 if not os.path.isdir(SCRATCH):
@@ -60,9 +55,10 @@ if not os.path.isdir(information_dir) and RUNNING_ON_DELLA:
 
 
 vartypes_to_classify = [ 'RRAB','none' ]
-skip_vartypes = [ '*' , 'R' , 'RR', 'R(B)']
+skip_vartypes = [ '*' , 'R' , 'RR', 'R(B)', 'RRC' ]
 #types_to_use = [ 'E', 'EW', 'EB', 'EA', 'R', 'RRAB', 'RRC', 'RR', 'RR(AB)' ]
-types_to_use = [ 'RRAB', 'RRC', 'RR', 'R']
+#types_to_use = [ 'RRAB', 'RRC', 'RR', 'R']
+types_to_use = [ 'RRAB' ]
 
 classify_categories = False
 default_clfr = QDA
@@ -178,7 +174,9 @@ get_hatids_in_field_fname = lambda field : "%s/hatids_in_field_%s.list"%(hatids_
 get_labeled_hatids_fname = lambda : "%s/labeled_hatids.dat"%(model_output_dir)
 get_mystery_hatids_fname = lambda iteration : "%s/uncertain_labels_iter%d.dat"%(model_output_dir, iteration)
 #get_classifier_fname = lambda iteration : "%s/classifier_iter%04d.pkl"%(model_output_dir, iteration)
-get_classifier_fname = lambda iteration : "%s/bagged_comp_clfr_iter%04d"%(model_output_dir, iteration)
+#get_classifier_fname = lambda iteration : "%s/bagged_comp_clfr_iter%04d"%(model_output_dir, iteration)
+get_classifier_fname = lambda iteration : "%s/classifier_iter%04d.pkl"%(model_output_dir, iteration)
+get_classifier_information_fname = lambda iteration : "%s/classifier_iter%04d_info.pkl"%(model_output_dir, iteration)
 #get_keylist_dir = lambda field : "/home/jhoffman/2007_hatnet_phot/G%s/BASE"%(field)
 def get_keylist_dir(field): 
 	if field == '145':
@@ -290,7 +288,7 @@ svm_params = dict(
 )
 
 rfc_params = dict(
-	n_estimators=50, 
+	n_estimators=300, 
 	criterion='gini', 
 	max_depth=None, 
 	min_samples_split=2, 
@@ -298,7 +296,7 @@ rfc_params = dict(
 	#max_features=None,#'auto', 
 	max_features='auto',
 	bootstrap=True, 
-	oob_score=False, 
+	oob_score=True, 
 	n_jobs= -1, 
 	random_state=None, 
 	verbose=0

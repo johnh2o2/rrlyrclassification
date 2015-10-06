@@ -252,12 +252,38 @@ HAT-094-0001548.epdlc  HAT-094-0001548.epdlog  HAT-094-0001548.rlc  HAT-094-0001
 * Goal for today:
 	* Streamline labeling process
 		* Implementing simple process to transfer -> label -> transfer results back. 
-		* 
+		* Done!
+
+# Oct 1
+* Modified vislc/`label_candidates.py` to work more smoothly; corrected some annoying cosmetic bugs in `label_candidates.py`
+* Label candidates now works on both local and remote machines:
+	1. `scp della:/tigress/jah5/rrlyr_scratch/candidates_N.tar .`
+	2. `python label_candidates.py --tarfile candidates_N.tar --dont-save --visualize`
+	3. `scp candiate_results.dat della:/home/jah5/rrlyr_search/rrlyrclassification/candidate_results_N.dat`
+	4. `ssh della`
+	5. `cd rrlyr_scratch/rrlyrclassification`
+	6. `module load anaconda; module load mpi4py; module load openmpi`
+	7. `python label_candidates --save --results candidate_results_N.dat`
+* Then to update the model:
+	1. `salloc --ntasks=12 --ntasks-per-socket=12 -t 2:00:00` (to run an interactive job for this, it shouldn't take long)
+	2. `module load anaconda; module load mpi4py; module load openmpi` (load necessary modules)
+	3. `time srun -n 2 python update_model.py` (or n = 1, whatever; number of RF classifiers to train)
+	4. 
+* Now update_model.py isn't working...
+	* **REASON** -- BECAUSE THIS IS THE OLD VERSION. new version is `update_model2.py`.
+
+# Oct 3
+* Now I need to simplify the update_model.
+* Bagged random forest classifiers is a completely redundant idea.
+* I should experiment with AdaBoost/other classifiers
 
 # TODO:
-* Run current implementation on 145 + 219 ON DELLA.
-* Generate timing information. How long / lightcurve?
-* Implement SSRFC method (in its own module). Test on some example datasets.
+* Do better cross-validation.
+	* You should be using the 2d selection function: FPR(pmin, P(p>pmin)), TPR(pmin, P(p>pmin)); pick a minimum threshold, then choose an optimal selection criteria
+* **[DONE]** Run current implementation on 145 + 219 ON DELLA.
+* **[DONE]** (~17-18 seconds) Generate timing information. How long / lightcurve?
+* **[DONE]** Implement SSRFC method (in its own module). Test on some example datasets.
+	* Doesn't work.
 * Write a general set of convergence functions (or use anything given by sklearn)
 	* Want to know:
 		1. How does the error rate depend on number of samples?
@@ -265,6 +291,7 @@ HAT-094-0001548.epdlc  HAT-094-0001548.epdlog  HAT-094-0001548.rlc  HAT-094-0001
 * Implement a better candidate selection mechanism: You're not taking advantage of the state of the art.
 	* Don't want RRLyr-like objects. You want to choose "candidates" in the most efficient way possible to improve the model!
 * Attempt to make Kohonen maps of LC shapes faster.
-	* The "naive" way (maybe the only way) to train is len(xi) * len(xi) * N^d * Ntrain * 
-	                                                             ^^^^^^
-	                                                           best phase
+	* The "naive" way (maybe the only way) to train is len(xi) * len(xi) * N^d * Ntrain * Nsamples ~ (15)^2 * (100)^(2) * (5 * 10^6) * 10000 ~ 1.3 * 10^17 FLOPs. 
+	* Time = FLOPs/(FLOPs/s) = FLOPs / (1-4 FLOPs/cycle * (clockfreq)) ~ (1.3E17 FLOPs) ( 1 cycle / 1 FLOPs) ( 1 s / 2E9 cycles) ( 1 Hr / 3.6E3 s) ~ (1.3/7.2)E4 ~ 1.8E4 computational hours 
+	* Parallelize the training/searching!
+	                      

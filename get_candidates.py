@@ -59,8 +59,7 @@ assert(len(np.unique(hatids)) == len(hatids)) # Make sure there are no repeats!
 
 # Load classifier
 logprint(" get_candidates: Loading classifier: %s"%(get_classifier_fname(iteration)))
-classifier = BaggedModel()
-classifier.load(get_classifier_fname(iteration))
+classifier = pickle.load(open(get_classifier_fname(iteration), 'rb'))
 
 logprint(" get_candidates: getting keylist...")
 
