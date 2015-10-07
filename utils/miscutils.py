@@ -27,7 +27,7 @@ HP = pickle.HIGHEST_PROTOCOL
 def get_logfile(rank):
 	return "%s/logfile.%04d"%(SCRATCH, rank)
 save_log_of_each_node = True
-terminal_printing = False
+terminal_printing = True
 def logprint(m, all_nodes=False):
 	if VERBOSE and save_log_of_each_node:
 		msg = "node %d: %s"%(comm.rank, m)
@@ -1418,11 +1418,11 @@ def load_2mass_info_for_field():
 def add_twomass_info_field(field):
 	print "miscutils: loading twomass_info_for_fields for field %s"%(field)
 	global twomass_info_for_field
-	if twomass_info_for_field is None: 
+	if twomass_info_for_field is None:
+		print "miscutils: twomass info is None."
 		twomass_info_for_field = { field : twomass_info_file(field)}
 	else:
 		twomass_info_for_field[field] = twomass_info_file(field)
-
 
 def get_bagged_samples(Categories, size, ftest=0.):
 	Samples = {}

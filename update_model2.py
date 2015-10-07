@@ -71,19 +71,15 @@ for train_index, test_index in StratifiedKFold(Labels, n_folds=nfolds, shuffle=T
 	fprs.append(fpr)
 	aucs.append(auc( fpr, tpr ))
 
-# Find the right threshold!
-logprint("   %-10s %-20s %-20s"%("threshold", "tpr", "fpr"))
-for i,t in enumerate(thresholds):
-	fpr = np.mean([ fprs[j][i] for j in range(len(fprs)) ])
-	dfpr = np.std([ fprs[j][i] for j in range(len(fprs)) ])
+	# Find the right threshold!
+	logprint("   %-10s %-20s %-20s"%("threshold", "tpr", "fpr"))
+	for i,t in enumerate(thresholds):
+		logprint("  %-10.4f %-6.4f      %-6.4f"%(t, tpr[i], fpr[i]))
 
-	tpr = np.mean([ tprs[j][i] for j in range(len(tprs)) ])
-	dtpr = np.std([ tprs[j][i] for j in range(len(tprs)) ])
-
-	logprint("  %-10.3f %-6.3e +/- %-6.3e %-6.3e +/- %-6.3e"%(t, tpr, dtpr, fpr, dfpr))
+	logprint("   OOB_SCORE = %.6f"%(Model.oob_score_))
 
 # Now train full model.
-Full_Model = MakeCompositeModelFromScratch(Observations, Labels)
+Full_Model = RandomForestClassifier(**rfc_params).fit(Observations, Labels)
 final_oob_score = Full_Model.oob_score_
 
 # Save model + relevant information
@@ -91,13 +87,16 @@ pickle.dump(Full_Model, open(get_classifier_fname(iteration), 'wb'))
 pickle.dump((skip_features, vartypes_to_classify, Keylist ), open(get_classifier_information_fname(iteration), 'wb'))
 
 # Print OOB scores
-print "OOB scores: ", oob_scores
-print "Avg = %.5e +/- %.5e"%(np.mean(oob_scores), np.std(oob_scores))
-print "Final: %.5e"%(final_oob_score)
+print "OOB  Scores"
+print "Avg     = %.5f +/- %.5f"%(np.mean(oob_scores), np.std(oob_scores))
+print "Final   = %.5f"%(final_oob_score)
 
 # Do a more careful assessment of the learning curve
-scoring = log_loss
-train_sizes_abs, train_scores, test_scores = learning_curve(RandomForestClassifier(**rfc_params), Observations, Labels, scoring=scoring)
+scoring_func = log_loss
+scoring = lambda model, x, y : scoring_func(y, model.predict_proba(x))
+estimator = RandomForestClassifier(**rfc_params)
+train_sizes = np.linspace(0.1, 1.0, 10)
+train_sizes_abs, train_scores, test_scores = learning_curve(estimator, Observations, Labels, scoring=scoring, train_sizes=train_sizes)
 
 # TODO: add learning_validation to see how this depends upon number of estimators...
 
@@ -120,7 +119,7 @@ if use_matplotlib:
 	# Plot ROC results.
 	f = plt.figure(figsize=(4,4),tight_layout=True )
 	ax = f.add_subplot(111)
-	AddROCtoAxis(ax, tprs, fprs, tpr_range=[0.998, 1], fpr_range=[0.0, 0.4])
+	AddROCtoAxis(ax, tprs, fprs, tpr_range=[0.99, 1], fpr_range=[0.0, 0.3])
 	ax.set_title("Model iteration %d"%(iteration))
 	f.suptitle("RandomForestClassifier (%d estimators)"%(rfc_params['n_estimators']))
 	f.savefig('%s/model_iter%d_cross_validation.png'%(parent_dir, iteration))
@@ -128,14 +127,4 @@ if use_matplotlib:
 	# Plot which variables are the most important
 	PlotRandomForestImportances( Full_Model, Keylist, savefig='%s/model_iter%d_feature_imps.png'%(parent_dir, iteration ))
 
-	# Now print thresholds!
-	logprint("   %-10s %-20s %-20s"%("threshold", "tpr", "fpr"))
-	for i,t in enumerate(thresholds):
-		fpr = np.mean([ bfprs[j][i] for j in range(len(bfprs)) ])
-		dfpr = np.std([ bfprs[j][i] for j in range(len(bfprs)) ])
-
-		tpr = np.mean([ btprs[j][i] for j in range(len(btprs)) ])
-		dtpr = np.std([ btprs[j][i] for j in range(len(btprs)) ])
-
-		logprint("  %-10.3f %-6.3e +/- %-6.3e %-6.3e +/- %-6.3e"%(t, tpr, dtpr, fpr, dfpr))
 
