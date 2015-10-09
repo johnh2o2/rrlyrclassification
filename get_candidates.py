@@ -43,13 +43,10 @@ bad_ids = load_bad_ids(iteration)
 # Get list of labeled hatids (obviously avoid these...)
 if not os.path.exists(get_labeled_hatids_fname()): raise Exception(" Cannot find labeled hatids file %s"%(get_labeled_hatids_fname()))
 labeled_hatids = np.loadtxt(get_labeled_hatids_fname(), dtype=np.dtype([('hatid', 'S15'), ('iter', np.int_), ('label', 'S15')]))['hatid'].tolist()
-#print len(labeled_hatids)
+
 # Get HAT ID's that are located in the fields that we're analyzing (and that aren't already labeled)
 hatids = [ hatid for hatid in hatid_field_list if get_field_of(hatid) in fields_to_analyze and not hatid in labeled_hatids ]
 
-
-#hatids = labeled_hatids 
-#print len(hatids)
 
 if not NFILES_MAX is None and len(hatids) > NFILES_MAX:
 	logprint(" get_candidates: only using first %d hatids."%(NFILES_MAX))

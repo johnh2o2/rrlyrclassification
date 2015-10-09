@@ -464,8 +464,7 @@ def translate_features(features, iteration):
 def score_features(features, pcov_file, iteration=0, N=1000, kind="other"):
 	
 	if features is None: return None
-	model = BaggedModel()
-	model.load(get_classifier_fname(iteration))
+	model = pickle.load(open(get_classifier_fname(iteration), 'rb'))
 
 	feats = get_mc_fit_features(features,pcov_file,N=N)
 	Feats = { i : f for i, f in enumerate(feats)  }
