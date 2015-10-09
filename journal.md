@@ -267,8 +267,9 @@ HAT-094-0001548.epdlc  HAT-094-0001548.epdlog  HAT-094-0001548.rlc  HAT-094-0001
 * Then to update the model:
 	1. `salloc --ntasks=12 --ntasks-per-socket=12 -t 2:00:00` (to run an interactive job for this, it shouldn't take long)
 	2. `module load anaconda; module load mpi4py; module load openmpi` (load necessary modules)
-	3. `time srun -n 2 python update_model.py` (or n = 1, whatever; number of RF classifiers to train)
-	4. 
+	3. `time python update_model2.py` (or n = 1, whatever; number of RF classifiers to train)
+* Then to get candidates:
+	1. 
 * Now update_model.py isn't working...
 	* **REASON** -- BECAUSE THIS IS THE OLD VERSION. new version is `update_model2.py`.
 
@@ -294,4 +295,3 @@ HAT-094-0001548.epdlc  HAT-094-0001548.epdlog  HAT-094-0001548.rlc  HAT-094-0001
 	* The "naive" way (maybe the only way) to train is len(xi) * len(xi) * N^d * Ntrain * Nsamples ~ (15)^2 * (100)^(2) * (5 * 10^6) * 10000 ~ 1.3 * 10^17 FLOPs. 
 	* Time = FLOPs/(FLOPs/s) = FLOPs / (1-4 FLOPs/cycle * (clockfreq)) ~ (1.3E17 FLOPs) ( 1 cycle / 1 FLOPs) ( 1 s / 2E9 cycles) ( 1 Hr / 3.6E3 s) ~ (1.3/7.2)E4 ~ 1.8E4 computational hours 
 	* Parallelize the training/searching!
-	                      
