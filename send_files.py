@@ -49,7 +49,8 @@ candidate_score_filenames = [ settings.get_scores_fname(ID, iteration) for ID in
 
 # Make directories
 
-candidate_dir = "%s/candidates_%d"%(settings.SCRATCH, iteration)
+candidate_dir_name = "candidates_%s_iter%04d"%(settings.model_prefix, iteration)
+candidate_dir = "%s/%s"%(settings.SCRATCH, candidate_dir_name)
 lcdir = "%s/lc"%(candidate_dir)
 fdir = "%s/features"%(candidate_dir)
 sdir = "%s/scores"%(candidate_dir)
@@ -70,6 +71,6 @@ print "Copying hatid list."
 os.system("cp %s %s/candidate_ids.pkl"%(settings.get_candidate_fname(iteration), candidate_dir))
 
 print "Archiving."
-os.system("cd %s; cd ..; tar cvf %s.tar candidates_%d/"%(candidate_dir, candidate_dir, iteration))
+os.system("cd %s; cd ..; tar cvf %s.tar %s"%(candidate_dir, candidate_dir, candidate_dir_name))
 
 print "Done: %s.tar"%(candidate_dir)

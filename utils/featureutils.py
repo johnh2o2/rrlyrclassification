@@ -204,13 +204,15 @@ def MakeOtherModel(xtrain, ytrain):
 	#clfr.fit(xtrain_scaled, ytrain)
 	#return scaler, clfr
 def PlotRandomForestImportances( RFCs, Keylists, savefig=None ):
-	if not hasattr(RFCs, '__getitem__'):
+	if not isinstance(RFCs, list):
+		#logprint(" PRFI : RFCs is not a list! Acting accordingly.")
 		imps = RFCs.feature_importances_
 		xerr = None
 		inds = np.argsort(imps)
 		imps = np.sort(imps)
 		labels = [ Keylists[i] for i in inds]
 	else:
+		#logprint(" PRFI : RFCs IS a list.")
 		Imps = { k : [] for k in Keylists[0] }
 		for RFC, Keylist in zip(RFCs, Keylists):
 			fimps = RFC.feature_importances_
@@ -462,8 +464,7 @@ def translate_features(features, iteration):
 def score_features(features, pcov_file, iteration=0, N=1000, kind="other"):
 	
 	if features is None: return None
-	model = BaggedModel()
-	model.load(get_classifier_fname(iteration))
+	model = pickle.load(open(get_classifier_fname(iteration), 'rb'))
 
 	feats = get_mc_fit_features(features,pcov_file,N=N)
 	Feats = { i : f for i, f in enumerate(feats)  }

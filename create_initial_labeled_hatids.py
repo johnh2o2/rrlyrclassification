@@ -1,4 +1,5 @@
 import os, sys
+import utils.miscutils as mutils
 from utils.miscutils import *
 from utils.featureutils import *
 from settings import *
@@ -84,13 +85,16 @@ def prune_and_save(results):
 	f = open(get_labeled_hatids_fname(), 'w')
 	for ID in hatids:
 		if ID in BAD_IDS: continue
+		if not ID in categories: raise Exception("Cannot find category for %s."%(ID))
+		if categories[ID] is None: continue
 		f.write("%-20s%-10i%-20s\n"%(ID, 0, categories[ID]))
 	f.close()
 
 
 	logprint("                               : Done.")
 
-tmi = twomass_info_for_field['gcvs']
+add_twomass_info_field('gcvs')
+tmi = mutils.twomass_info_for_field['gcvs']
 def tmdat(hatid):
 	if not hatid in tmi: return None
 	return tmi[hatid]

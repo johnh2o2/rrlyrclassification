@@ -6,12 +6,12 @@ from sklearn.qda import QDA
 import numpy as np
 import cPickle as pickle
 
-RUNNING_ON_DELLA = False
-model_prefix = "rrab_v3"
-fields_to_analyze = [ '145', 'gcvs', '219' ]
+RUNNING_ON_DELLA = True
+model_prefix = "rrab_v4"
+fields_to_analyze = [ '145', 'gcvs' ]#, '219', '216', '214', '215', '212', '213' ]
 acceptable_tpr = 1 - 1E-3
-min_score = 0.2
-min_frac_above_min_score = 0.5
+min_score = 0.4
+min_frac_above_min_score = 0.6
 nmc = 1000
 ssh_host_name = 'phn1'
 VERBOSE = True
@@ -21,7 +21,8 @@ if RUNNING_ON_DELLA:
 	parent_dir = '/home/jah5/rrlyr_search/rrlyrclassification'
 	SCRATCH = "/tigress/jah5/rrlyr_scratch"
 	information_dir = "%s/information"%(SCRATCH)
-	force_redo = False
+	force_redo = True
+	NFILES_MAX = None
 else:
 	parent_dir = '/Users/jah5/Documents/Fall2014_Gaspar/rrlyr_classification'
 	#SCRATCH = '%s'%(parent_dir)
@@ -84,14 +85,14 @@ mag_features = [ 'R-V', 'I-V', 'J-V', 'H-V', 'K-V' ]
 
 num = None
 min_ndets = 20
-nfolds = 50
+nfolds = 10
 cutoff = 0.05
 overwrite = force_redo
 
 COL_TYPE = 'TF'
 COL_SELECTION = 'locally-brightest'
 
-nharmonics = 6
+nharmonics = 8
 npers      = 1
 
 NPEAKS_TO_SAVE = 5
@@ -288,7 +289,7 @@ svm_params = dict(
 )
 
 rfc_params = dict(
-	n_estimators=300, 
+	n_estimators=1000, 
 	criterion='gini', 
 	max_depth=None, 
 	min_samples_split=2, 

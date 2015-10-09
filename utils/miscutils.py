@@ -27,14 +27,16 @@ HP = pickle.HIGHEST_PROTOCOL
 def get_logfile(rank):
 	return "%s/logfile.%04d"%(SCRATCH, rank)
 save_log_of_each_node = True
-terminal_printing = False
+terminal_printing = True
+nodes_to_print = [ 0, 1 ]
 def logprint(m, all_nodes=False):
 	if VERBOSE and save_log_of_each_node:
 		msg = "node %d: %s"%(comm.rank, m)
 		f = open(get_logfile(rank), 'a')
 		f.write("%s\n"%(m))
 		f.close()
-	if VERBOSE and all_nodes and terminal_printing: print "node %d: %s "%(comm.rank, m)
+	if VERBOSE and all_nodes and terminal_printing and comm.rank in nodes_to_print: 
+		print "node %d: %s "%(comm.rank, m)
 	elif VERBOSE and ROOT and terminal_printing: print m
 
 
@@ -1004,13 +1006,13 @@ def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_da
 	logprint("  load_full_tfalc_from_scratch ** %s"%(hatid), all_nodes=True)
 
 	# Load full lightcurve if one is available
-	if os.path.exists(get_lc_fname(hatid)) and not force_redo: 
+	if os.path.exists(get_lc_fname(hatid)): 
 		logprint("    (loading) %s"%(hatid), all_nodes=True)
 		try:
 			f = gzip.open(get_lc_fname(hatid), 'rb')
 			full_tfalc = pickle.load(f)
 			f.close()
-			return full_tfalc
+			if not force_redo or ( force_redo and not full_tfalc is None ): return full_tfalc
 		except:
 			logprint("               !                  %s  ! can't load %s"%(hatid, get_raw_lc_fname(hatid)), all_nodes=True)
 	
@@ -1024,25 +1026,26 @@ def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_da
 	if not os.path.exists(get_raw_lc_fname(hatid)): 
 		logprint("                    !             %s  ! No tfalc lightcurve on the system."%(hatid), all_nodes=True)
 		return save_and_return(None, hatid, save_full_lc)
+	
 	# Obtain twomass/color data for hatid
 	if twomass_dat is None:
 
 		# Try loading twomass_info_for_field if it isn't loaded already...
 		if twomass_info_for_field is None: add_twomass_info_field(field)
 		if twomass_info_for_field is None: raise Exception("line 1033 in miscutils: tried to load twomass_info_for_field, but it's STILL None.")
+		if not field in twomass_info_for_field: add_twomass_info_field(field)
 		
 		if is_gcvs(hatid) and 'gcvs' in fields_to_analyze:
-
-
-
 			if not hatid in twomass_info_for_field['gcvs']:
 				logprint("                    !             %s  !  No twomass information available for hatid in `gcvs` field."%(hatid), all_nodes=True)
 				return save_and_return(None, hatid, save_full_lc)
 			twomass_dat = twomass_info_for_field['gcvs'][hatid]
 
 		elif not field in twomass_info_for_field:
+			
 			logprint("                    !             %s  !  No twomass information loaded for field %s.\n\t\t\t You'll need to run make_2mass_info_file.py again for this field"%(hatid, field), all_nodes=True)
 			return save_and_return(None, hatid, save_full_lc)
+			#return
 		elif not hatid in twomass_info_for_field[field]:
 			logprint("                    !             %s  !  No twomass information loaded.\n\t\t\t You'll need to run make_2mass_info_file.py again for this hatid"%(hatid), all_nodes=True)
 			return save_and_return(None, hatid,  save_full_lc)
@@ -1418,11 +1421,11 @@ def load_2mass_info_for_field():
 def add_twomass_info_field(field):
 	print "miscutils: loading twomass_info_for_fields for field %s"%(field)
 	global twomass_info_for_field
-	if twomass_info_for_field is None: 
+	if twomass_info_for_field is None:
+		print "miscutils: twomass info is None."
 		twomass_info_for_field = { field : twomass_info_file(field)}
 	else:
 		twomass_info_for_field[field] = twomass_info_file(field)
-
 
 def get_bagged_samples(Categories, size, ftest=0.):
 	Samples = {}
