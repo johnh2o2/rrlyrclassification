@@ -8,7 +8,23 @@ import cPickle as pickle
 
 RUNNING_ON_DELLA = True
 model_prefix = "rrab_v4"
-fields_to_analyze = [ '145', 'gcvs' ]#, '219', '216', '214', '215', '212', '213' ]
+#fields_to_analyze = [ 'gcvs', '145', '219', '216', '214', '215', '212','213']
+#fields_to_analyze = [ '210', '211', '093', '095', '096', '133', '132', '136']
+#fields_to_analyze = [ '135', '134', '138', '161', '288', '341', '342', '163']
+#fields_to_analyze = [ '285', '284', '287', '286', '123','124', '125', '126' ]
+#fields_to_analyze = [ '127', '128', '269', '268', '378', '416', '294', '292']
+fields_to_analyze = [ '293', '377', '376', '318', '199', '198', '195', '194', '311', '196', '191', '190', '193', '192', '115', '088']
+#fields_to_analyze = [ '277', '142', '143', '207', '206', '366', '364', '365']
+#fields_to_analyze = [ '362', '300', '247', '384', '240', '242', '388', '389']
+#fields_to_analyze = [ '100', '101', '249', '248', '162', '241', '432', '431']
+#fields_to_analyze = [ '144', '258', '259', '177', '176', '175', '174', '173']
+#fields_to_analyze = [ '257', '170', '203', '182', '183', '186', '187', '184']
+#fields_to_analyze = [ '185', '188', '063', '062', '317', '316', '168', '315']
+#fields_to_analyze = [ '164', '165', '166', '167', '160', '222', '221', '220']
+#fields_to_analyze = [ '314', '151', '150', '153', '152', '155', '154', '159']
+#fields_to_analyze = [ '238', '239', '235', '236', '146', '147', '089', '205']
+#fields_to_analyze = [ '204', '140', '141', '209', '087', '086', '148', '149', '357', '267' ]
+
 acceptable_tpr = 1 - 1E-3
 min_score = 0.4
 min_frac_above_min_score = 0.6
@@ -21,7 +37,7 @@ if RUNNING_ON_DELLA:
 	parent_dir = '/home/jah5/rrlyr_search/rrlyrclassification'
 	SCRATCH = "/tigress/jah5/rrlyr_scratch"
 	information_dir = "%s/information"%(SCRATCH)
-	force_redo = True
+	force_redo = False
 	NFILES_MAX = None
 else:
 	parent_dir = '/Users/jah5/Documents/Fall2014_Gaspar/rrlyr_classification'
