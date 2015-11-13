@@ -6,7 +6,7 @@ from sklearn.qda import QDA
 import numpy as np
 import cPickle as pickle
 
-RUNNING_ON_DELLA = True
+RUNNING_ON_DELLA = False
 model_prefix = "rrab_v4"
 fields_to_analyze = [ '145', 'gcvs' ]#, '219', '216', '214', '215', '212', '213' ]
 acceptable_tpr = 1 - 1E-3
