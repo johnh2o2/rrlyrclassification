@@ -89,6 +89,10 @@ for field in fields_to_analyze:
 			pickle.save(field_ids, open(fname, 'wb'))
 		'''
 		field_ids = pickle.load(open(fname, 'rb'))
+		if field_ids is None: 
+			hatid_field_list[hatid] = []
+			continue
+		
 		for hatid in field_ids:
 			hatid_field_list[hatid] = field
 
@@ -899,15 +903,19 @@ def add_keylist_data(lc, kl):
 	return lc
 
 def get_colnames(local_fname):
+	logprint(" in get_colnames: local_fname = %s"%(local_fname), all_nodes=True)	
 	with open(local_fname, 'r') as f:
 		for line in f:
 			if '#' in line: continue
 			val1 = line.split()[0]
 			if 'HAT' in val1: return HATLC_COL_DEFS['hs']['tfalc']
 			else: return HATLC_COL_DEFS['hn']['tfalc']
+	return None
+
 def load_tfalc(local_fname):
 	lc = {}
 	colnames = get_colnames(local_fname)
+	if colnames is None: return None
 	for c in colnames: lc[c] = []
 
 	with open(local_fname, 'r') as f:
@@ -961,7 +969,9 @@ def prune_out_bad_inds(lc):
 def load_full_tfalc(local_fname, keylist_dat, twomass_dat):
 
 	lc = load_tfalc(local_fname)
+	if lc is None: return None
 	lc = add_keylist_data(lc, keylist_dat)
+	if lc is None: return None
 	lc = add_2mass(lc, twomass_dat)
 	return lc
 

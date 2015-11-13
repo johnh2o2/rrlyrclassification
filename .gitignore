@@ -11,3 +11,6 @@ hatids_in_field_lists/
 hatid_field_list.pkl
 *png
 information/
+candidat*dat
+.nfs*
+matched_hatids_with_score_3.pkl
