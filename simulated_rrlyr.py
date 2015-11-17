@@ -209,7 +209,7 @@ if __name__ == '__main__':
 
 		lc.best_fit_phases = np.linspace(0, 1, 100)
 		lc.best_fit_pf = fit_function(lc.best_fit_phases * period, *args)
-
+	
 	for lc in m5lcs:
 		f = plt.figure()
 

@@ -24,7 +24,7 @@ import subprocess, os, shlex, sys, gzip, sys
 nthreads = 4 # Number of threads to use on phn1.
 fields = 'all' 
 fname = "twomass_info.pklz" 
-FORCE_REDO = False
+FORCE_REDO = True
 
 print "loading field list.."
 field_list = pickle.load(open("field_info2.pkl", 'rb'))

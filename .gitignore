@@ -14,3 +14,4 @@ information/
 candidat*dat
 .nfs*
 matched_hatids_with_score_3.pkl
+test.py

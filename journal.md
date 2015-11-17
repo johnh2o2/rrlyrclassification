@@ -399,6 +399,31 @@ real    215m27.890s
 	* SEKBO [here](http://cdsbib.u-strasbg.fr/cgi-bin/cdsbib?2012ApJ...756...23A) and [here](http://cdsbib.u-strasbg.fr/cgi-bin/cdsbib?2009ApJ...691..306P)
 	* Tsinghua University–NAOC Transient Survey
 
+# Nov 13
+* Time to get cracking.
+* Goal: paper submitted in january 
+* Start working on it! MNRAS sounds like it makes the most sense
+
+# Nov 17
+* Goals today:
+	* E-mail Gaspar to meet about (1) thesis meeting (2) thesis ideas (3) going forward: goals + timeline
+	* **[DONE]** Simplify get_candidates script; maybe incorporate processing?
+		* Add command line argument capabilities
+		* Edit miscutils...what do you need and what do you not need?
+		* Edit settings?
+	* **[DONE]** Get large della runs going
+	* Continue to write code to evaluate completeness
+* **lots of itfalc** lightcurves being used....this seems like it's probably a problem.
+* Last della run (6356384: 4 hours 12 * 12 cores)
+	* Exceptions thrown -- in load_tfalc. We "except ValueError" when reading the lightcurve file but then raise an exception. 
+		* This has been fixed on the della repo by instead printing the error and then returning None.
+* Submitted another della run (6365411)
+* Miscutils is still messy; made a couple of functions to set 
+	* `fields_to_analyze` (so we don't have to change the settings file every single time we want to run things)
+	* `hatid_field_list` (which relies upon `fields_to_analyze`)
+* Command-line to see if there are any exceptions in the current run: `cat $SLURM_FILE | grep Exception | wc -l`
+
+
 # TODO:
 * Look at: http://arxiv.org/pdf/1306.6664v2.pdf <-- conditional entropy; 1.5 orders of magnitude faster than LS and about 1 order of mag more effective.
 * Do better cross-validation.
