@@ -928,8 +928,11 @@ def load_tfalc(local_fname):
 				try:
 					lc[c].append(TEXTLC_OUTPUT_COLUMNS[c][3](vals[i]))
 				except ValueError, e:
-					raise Exception("{0} -- {1} not convertable... {2}".format(c, vals[i], local_fname))
-
+					#raise Exception("{0} -- {1} not convertable... {2}".format(c, vals[i], local_fname))
+					message = "{0} -- {1} not convertable... {2}".format(c, vals[i], local_fname)
+					logprint(message, all_nodes=True)
+					return None
+			
 	for c in colnames: lc[c] = np.array(lc[c])
 	lc['frame'] = []
 	lc['STF'] = []
