@@ -34,10 +34,13 @@ parser.add_argument("--list",nargs='*', help="Path to pickled list of hatids")
 parser.add_argument("--rm-orig", action='store_true', help='Remove original .tfalc lightcurve')
 parser.add_argument("--force-redo", action='store_true', help='Not exactly sure what this does...')
 parser.add_argument("--iteration", type=int, default=get_iteration_number(), help='Not exactly sure what this does...')
+parser.add_argument('--parallelize-by-hatid', action='store_false', dest='parallelize_fields', help="Pass this flag if num_hatids >>> num_fields")
 
 # Parse command line arguments
 args = parser.parse_args()
 iteration = args.iteration
+parallelize_fields = args.parallelize_fields
+
 def safe_save(obj, fname):
 	if args.save: pickle.dump(obj, open(fname, 'wb'))
 
@@ -126,26 +129,84 @@ if len(nofield_hatids) > 0:
 # PROCESS ============================================================
 # --------------------------------------------------------------------
 
-def process_field(field):
+def process_field_serial(field):
 	hatids = field_split[field]
-	bad_ids_in_field = []
+	bad_ids_in_field = [ hatid for hatid in BAD_IDS ]
 	candidates_in_field = []
 
 	logprint(" get_candidates: Handling the %d hatids in field %s"%(len(hatids), field), all_nodes=True)
 	
+	# Load keylist for field + check that its not None
 	keylist = load_keylist(field)
 	if keylist is None:
-		logprint('               : keylist is None.', all_nodes=True)
-		return 
-		
+		logprint("               : keylist for field %s is None; %d hatids are going to be labeled BAD"%(field, len(hatids)), all_nodes=True)
+		bad_ids_in_field.extend(hatids)
+		return bad_ids_in_field, candidates_in_field
+
+	# Load twomass info for field + check that its not None
 	twomass = twomass_info_file(field)
+	if twomass is None:
+		logprint("               : twomass info for field %s is None; %d hatids are going to be labeled BAD"%(field, len(hatids)), all_nodes=True)
+		bad_ids_in_field.extend(hatids)
+		return bad_ids_in_field, candidates_in_field
 
+	# How many hatids do not have available twomass information?
+	nno2mass = 0
+	for hatid in hatids:
+		if hatid not in bad_ids_in_field and (hatid not in twomass or twomass[hatid] is None):
+			nno2mass += 1
+			bad_ids_in_field.append(hatid)
 
-CANDIDATES = []
-for field in field_split:
+	# Remove bad hatids
+	hatids = [ hatid for hatid in hatids if not hatid in bad_ids_in_field ]
+
+	# Print the number of hatids discarded because of missing 2mass information
+	if nno2mass > 0: logprint(" get_candidates: 2mass info not available for %d hatids in field %s"%(nno2mass, field), all_nodes=True)
+
+	# Skip this field if there are no good hatids.
+	if len(hatids) == 0: 
+		logprint(" get_candidates: there are no more viable hatids in field %s"%(field))
+		return bad_ids_in_field, candidates_in_field
+
+	for hatid in hatids:
+		if hatid in bad_ids_in_field: continue
+
+		# Generate lightcurve ... 
+		lc = load_full_tfalc_from_scratch(hatid, field=None, 
+				keylist_dat=keylist, twomass_dat=twomass[hatid], save_full_lc=True, 
+				min_observations=5, delete_raw_lc=args.rm_orig, force_redo = args.force_redo)
+
+		#  ... and check that the lc is OK
+		if lc is None:
+			bad_ids_in_field.append(hatid)
+			continue
+
+		# Generate features ...
+		feats = generate_features(hatid)
+
+		# ... and check that the features are ok
+		if feats is None:
+			bad_ids_in_field.append(hatid)
+			continue
+
+		# Score the hatid ...
+		scores, status = test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score, iteration, N=nmc)
+
+		# ... and check that the scoring went OK
+		if status is None:
+			bad_ids_in_field.append(hatid)
+		elif status:
+			candidates_in_field.append(hatid)
+		safe_save(scores, get_scores_fname(hatid,iteration))
+		
+	return bad_ids_in_field, candidates_in_field
+def process_field_parallel(field):
 	
 	# Get a list of hatids in this field
 	hatids = field_split[field]
+	bad_ids_in_field = [ hatid for hatid in BAD_IDS ]
+	candidates_in_field = []
+	
 	logprint(" get_candidates: Handling the %d hatids in field %s"%(len(hatids), field))
 
 	# Load keylist and twomass information for this field
@@ -164,22 +225,22 @@ for field in field_split:
 	# Test twomass/keylist info
 	if keylist is None:
 		logprint(" get_candidates: keylist for field %s is None; %d hatids are going to be labeled BAD"%(field, len(hatids)))
-		BAD_IDS.extend(hatids)
-		continue
+		bad_ids_in_field.extend(hatids)
+		return bad_ids_in_field, candidates_in_field
 	if twomass is None:
 		logprint(" get_candidates: 2mass info not available for field %s; %d hatids are going to be labeled BAD"%(field, len(hatids)))
-		BAD_IDS.extend(hatids)
-		continue
+		bad_ids_in_field.extend(hatids)
+		return bad_ids_in_field, candidates_in_field
 
 	# Are any hatids missing from the 2mass information?
 	nno2mass = 0
 	for hatid in hatids:
-		if hatid not in BAD_IDS and (hatid not in twomass or twomass[hatid] is None):
+		if hatid not in bad_ids_in_field and (hatid not in twomass or twomass[hatid] is None):
 			nno2mass += 1
-			BAD_IDS.append(hatid)
+			bad_ids_in_field.append(hatid)
 
 	# Remove bad hatids
-	hatids = [ hatid for hatid in hatids if not hatid in BAD_IDS ]
+	hatids = [ hatid for hatid in hatids if not hatid in bad_ids_in_field ]
 
 	# Print the number of hatids discarded because of missing 2mass information
 	if nno2mass > 0: logprint(" get_candidates: 2mass info not available for %d hatids in field %s"%(nno2mass, field))
@@ -187,7 +248,7 @@ for field in field_split:
 	# Skip this field if there are no good hatids.
 	if len(hatids) == 0: 
 		logprint(" get_candidates: there are no more viable hatids in field %s"%(field))
-		continue
+		return bad_ids_in_field, candidates_in_field
 
 	# Master/slave workload distribution to make & test features
 	if ROOT:
@@ -197,26 +258,28 @@ for field in field_split:
 		logprint("               :  processing lightcurve!")
 		results = msl.master(hatids)
 		for ID, status in results:
-			if status is False and not ID in bad_ids:
-				BAD_IDS.append(ID)
+			if status is False and not ID in bad_ids_in_field:
+				bad_ids_in_field.append(ID)
 
 		# Generate features
 		logprint("               :  generating features!")
 		results = msl.master(hatids)
 		for ID, status in results:
-			if status is False and not ID in bad_ids:
-				BAD_IDS.append(ID)
+			if status is False and not ID in bad_ids_in_field:
+				bad_ids_in_field.append(ID)
+				
 
 		# Classify ids
 		logprint("               :  scoring hatids!")
 		results = msl.master(hatids)
 		for ID, scores, status in results:
-			if status is None and not ID in bad_ids:
-				BAD_IDS.append(ID)
+			if status is None and not ID in bad_ids_in_field:
+				bad_ids_in_field.append(ID)	
 			elif status:
-				CANDIDATES.append(ID)
+				candidates_in_field.append(ID)
 			safe_save(scores, get_scores_fname(ID,iteration))
 		
+
 		
 	else:
 		msl.slave(lambda hatid : (hatid, load_full_tfalc_from_scratch(hatid, field=None, 
@@ -226,6 +289,25 @@ for field in field_split:
 		msl.slave(lambda hatid : (hatid, ) + test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score, iteration, N=nmc))
 
 	logprint("               : done.")
+	return bad_ids_in_field, candidates_in_field
+
+# Choose the method of parallelization 
+CANDIDATES = []
+if parallelize_fields:
+	if ROOT:
+		bad_ids, cands = msl.master(field_split.keys())
+		for bids, cs in zip(bad_ids, cands):
+			BAD_IDS.extend(bids)
+			CANDIDATES.extend(cands)
+	else:
+		msl.slave(process_field_serial)
+else:
+
+	for field in field_split:
+		bad_ids, cands = process_field_parallel(field)
+		if ROOT:
+			BAD_IDS.extend(bad_ids)
+			CANDIDATES.extend(cands)
 
 # ====================================================================
 # ----------------------------------------------------------- /PROCESS
