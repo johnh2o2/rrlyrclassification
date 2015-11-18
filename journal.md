@@ -418,11 +418,21 @@ real    215m27.890s
 	* Exceptions thrown -- in load_tfalc. We "except ValueError" when reading the lightcurve file but then raise an exception. 
 		* This has been fixed on the della repo by instead printing the error and then returning None.
 * Submitted another della run (6365411)
+	* Aborted (was testing hatids)
 * Miscutils is still messy; made a couple of functions to set 
 	* `fields_to_analyze` (so we don't have to change the settings file every single time we want to run things)
 	* `hatid_field_list` (which relies upon `fields_to_analyze`)
-* Command-line to see if there are any exceptions in the current run: `cat $SLURM_FILE | grep Exception | wc -l`
+* Added `how_is` function to `~/.bash_profile` on della.
+	* Do `how_is $SLURM_FILE` and it will check for Exceptions.
+* How do we port everything to Della without substantial delays + breaking everything???
+	* Wait until current run is over.
+	* Git pull. Resolve (hopefully) minor issues.
+	* Interactive run.
+	* Run on pickled list of crossmatched sources!!
 
+# Nov 18
+* Della run completed: 29 candidates
+* Pulled on della. Let's see if we can't get the new get_candidates to work!
 
 # TODO:
 * Look at: http://arxiv.org/pdf/1306.6664v2.pdf <-- conditional entropy; 1.5 orders of magnitude faster than LS and about 1 order of mag more effective.
@@ -439,6 +449,6 @@ real    215m27.890s
 * Implement a better candidate selection mechanism: You're not taking advantage of the state of the art.
 	* Don't want RRLyr-like objects. You want to choose "candidates" in the most efficient way possible to improve the model!
 * Attempt to make Kohonen maps of LC shapes faster.
-	* The "naive" way (maybe the only way) to train is len(xi) * len(xi) * N^d * Ntrain * Nsamples ~ (15)^2 * (100)^(2) * (5 * 10^6) * 10000 ~ 1.3 * 10^17 FLOPs. 
+	* The "naive" way (maybe the only way) to train is len(xi) * len(xi) * N^d * Ntrain * Nsamples ~ (15)^2 * (100)^(2) * (5 * 10^6) * 10000 ~ 1.3E17 FLOPs. 
 	* Time = FLOPs/(FLOPs/s) = FLOPs / (1-4 FLOPs/cycle * (clockfreq)) ~ (1.3E17 FLOPs) ( 1 cycle / 1 FLOPs) ( 1 s / 2E9 cycles) ( 1 Hr / 3.6E3 s) ~ (1.3/7.2)E4 ~ 1.8E4 computational hours 
 	* Parallelize the training/searching!
