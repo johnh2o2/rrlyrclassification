@@ -267,8 +267,9 @@ HAT-094-0001548.epdlc  HAT-094-0001548.epdlog  HAT-094-0001548.rlc  HAT-094-0001
 * Then to update the model:
 	1. `salloc --ntasks=12 --ntasks-per-socket=12 -t 2:00:00` (to run an interactive job for this, it shouldn't take long)
 	2. `module load anaconda; module load mpi4py; module load openmpi` (load necessary modules)
-	3. `time srun -n 2 python update_model.py` (or n = 1, whatever; number of RF classifiers to train)
-	4. 
+	3. `time python update_model2.py` (or n = 1, whatever; number of RF classifiers to train)
+* Then to get candidates:
+	1. 
 * Now update_model.py isn't working...
 	* **REASON** -- BECAUSE THIS IS THE OLD VERSION. new version is `update_model2.py`.
 
@@ -277,7 +278,154 @@ HAT-094-0001548.epdlc  HAT-094-0001548.epdlog  HAT-094-0001548.rlc  HAT-094-0001
 * Bagged random forest classifiers is a completely redundant idea.
 * I should experiment with AdaBoost/other classifiers
 
+# Oct 9
+* Tried to run get_candidates on a number of fields (~10); allocated 12 (12 procs/node) nodes for 12 hours; waited ~30 hours in the queue, only for it to break in < 10 minutes!!!!
+	* "Bus error" was the reason.
+* Reran on 145 in interactive mode; min score = 0.4, with p(score > min score) > 0.6. 5 candidates found; 
+	* HAT-145-0000507 (RR c); other four are probably sidereal noise.
+	* Am I sure that I'm not training the algorithm on RRc's??
+		* Need to look through all GCVS RRAB sources again...
+* Where are these fields? Show map!
+	* 145 is far outside the galactic plane
+
+# Oct 11
+* Going to get get_candidates to work today if I have to stay up all night.
+* Running on interactive node for a bunch of 2__ fields. So far no problems....hmm....
+* Running with 12 nodes/12 proc per node on a 1 hr allocation...
+
+# Oct 13
+* Results (fields: 145, 219, 216, 214, 215, 212, 213) 
+```
+410197 total hatids
+98645 bad ids
+33 candidates
+               : done.
+
+real    215m27.890s
+```
+
+* Large number of 'bad ids'. Are we sure that we're using all of the twomass data?
+* 12 RRab's found; 
+* DT Gem is in this list of candidates: DT Gem is in GCVS as RRc!! Joel confirms that this is RRab (per > 0.6 d, not sinusoidal).
+* Updating model
+* **Meeting with Joel**:
+	* Testing our algorithm:
+		1. Inject/recover fake RR-lyrae:
+			a. Use large sample (i.e. from OGLE or ASAS (or both))
+			b. Use smaller sample from 1 or 2 GC's
+				* These should be relatively bias-free, since more attention is paid to each star...
+		2. Use regions that have Kepler observations; how many Kepler RR Lyrae do we recover?
+	* Adding features?
+		* Dust maps to estimate extinction and color corrections (Schlegel and Finkbeiner, e.g.)
+		* Reduced Proper Motion
+	* Use a simple, traditional "cut" model to see how that does, and if you're missing any.
+* Submitted job on ALL fields (12 * 12 for 6 hrs) (I don't want to wait too long for it to run, so I'm going to do things in shorter runs).
+	* Broke; some field_ids are None, and miscutils tries to iterate through them (line 92); hopefully fixed this now.
+	* resubmitted.
+
+# Oct 17
+* 22 candidates from the last run
+	* couple of problems during labeling:
+		* about 5-10 lightcurves were problematic: looking at HAT-129-0016713-full.tfalc.gz, the BJD column is *all strings*!! added line to pyvislc that casts all of the elements to floats.
+		* BUT, in that lightcurve, we have that the len(TF1) > len(BJD)!! Trying other columns for flux gives us a different number.
+		* No idea what the hell is going on here.
+	* 6 found!!
+* Submitted 12 hr job on line 3 of fields in settings.py
+
+# Oct 21
+* Didn't update in a little while; on iteration 6 right now.
+	* Trying to do more fields at a time.
+	* Did a 12hr/12node*12core run yesterday, >3hrs in the queue, only to have python throw an exception (lc was None in load_tfalc i think?).
+		* SRUN DIDN'T BREAK.
+		* E-mailed CSES with the relevant log information.
+			* They are insisting that it didn't crash because I caught the exception, but I *didnt* catch the exception...
+
+* Working on getting simulated RR lyrae;
+	* Read in and fit fourier components to M5 LC's
+	* Need to fetch a set of random HAT lightcurves now.
+		* Evaluate them to see if they're
+* It looks like features, when compressed, should take up about 2E3B * 5E6 lcs = 10 GB.
+* Should get a current list of all RR lyrae
+* FOUND DRAKE ET AL 2013: 12303 HALO RRAB....
+	* [Drake 2013](http://cdsads.u-strasbg.fr/abs/2013ApJ...763...32D)
+	* Downloaded catalog.
+	* How did I crossmatch against GCVS again?
+	* (2181 cross-matches!!!!) <-- nvm, code bug; only 341.
+
+* **0 crossmatches with OGLE III** (to be expected).
+* What about ASAS?
+* How about a catalog of boring stars?
+	* Cross-match with Catalina survey!!
+		* [Catalina Survey DR2](http://nesssi.cacr.caltech.edu/DataRelease/)
+
+# Oct 22
+* Talked with Waqas at end of day yesterday; 
+	* Stripe 82 (SDSS) [here](http://www.astro.washington.edu/users/ivezic/sdss/catalogs/S82variables.html)
+		* [Standard stars!!](http://www.astro.washington.edu/users/ivezic/sdss/catalogs/stripe82.html)
+		* Also [here](http://vizier.u-strasbg.fr/viz-bin/VizieR?-source=J/MNRAS/424/2528)
+	* NSVS [here](http://skydot.lanl.gov/)
+	* Loneos [here](http://adsabs.harvard.edu/abs/2008ApJ...678..865M)
+	* ASAS (sent csv of catalog)
+	* PanSTARRS ("though they've been bad at publicly releasing data")
+	* Palomar Transient Factory [here](http://www.ptf.caltech.edu/page/DR2), though I don't know how to get to the data
+	* 
+* Also found [LINEAR](http://www.astro.washington.edu/users/ivezic/linear/PaperIII/PLV.html) catalog(s)
+* Checked:
+	* OGLE III
+	* GCVS
+	* Catalina
+		* Drake 14 (non-RRab variable stars)
+		* Drake 13 (Halo RRLyr)
+		* Drake 13 II
+	* 
+* Look into using the [Supersmoother](http://www.slac.stanford.edu/cgi-wrap/getdoc/slac-pub-3477.pdf) algorithm; [github repo](https://github.com/jakevdp/supersmoother)
+* NEO projects from Wikipedia:
+	* ATLAS 
+	* . Catalina Sky Survey 
+	* . LINEAR 
+	* . LONEOS 
+	* NEAT 
+	* NEOSSat 
+	* NEOCam 
+	* NEODyS 
+	* OGS Telescope 
+	* Orbit@home 
+	* Pan-STARRS 
+	* SCAP 
+	* Sentinel Space Telescope Sentry 
+	* Spacewatch 
+	* WISE
+* Also:
+	* SEKBO [here](http://cdsbib.u-strasbg.fr/cgi-bin/cdsbib?2012ApJ...756...23A) and [here](http://cdsbib.u-strasbg.fr/cgi-bin/cdsbib?2009ApJ...691..306P)
+	* Tsinghua University–NAOC Transient Survey
+
+# Nov 13
+* Time to get cracking.
+* Goal: paper submitted in january 
+* Start working on it! MNRAS sounds like it makes the most sense
+
+# Nov 17
+* Goals today:
+	* E-mail Gaspar to meet about (1) thesis meeting (2) thesis ideas (3) going forward: goals + timeline
+	* **[DONE]** Simplify get_candidates script; maybe incorporate processing?
+		* Add command line argument capabilities
+		* Edit miscutils...what do you need and what do you not need?
+		* Edit settings?
+	* **[DONE]** Get large della runs going
+	* Continue to write code to evaluate completeness
+* **lots of itfalc** lightcurves being used....this seems like it's probably a problem.
+* Last della run (6356384: 4 hours 12 * 12 cores)
+	* Exceptions thrown -- in load_tfalc. We "except ValueError" when reading the lightcurve file but then raise an exception. 
+		* This has been fixed on the della repo by instead printing the error and then returning None.
+* Submitted another della run (6365411)
+* Miscutils is still messy; made a couple of functions to set 
+	* `fields_to_analyze` (so we don't have to change the settings file every single time we want to run things)
+	* `hatid_field_list` (which relies upon `fields_to_analyze`)
+* Command-line to see if there are any exceptions in the current run: `cat $SLURM_FILE | grep Exception | wc -l`
+
+
 # TODO:
+* Look at: http://arxiv.org/pdf/1306.6664v2.pdf <-- conditional entropy; 1.5 orders of magnitude faster than LS and about 1 order of mag more effective.
 * Do better cross-validation.
 	* You should be using the 2d selection function: FPR(pmin, P(p>pmin)), TPR(pmin, P(p>pmin)); pick a minimum threshold, then choose an optimal selection criteria
 * **[DONE]** Run current implementation on 145 + 219 ON DELLA.
@@ -294,4 +442,3 @@ HAT-094-0001548.epdlc  HAT-094-0001548.epdlog  HAT-094-0001548.rlc  HAT-094-0001
 	* The "naive" way (maybe the only way) to train is len(xi) * len(xi) * N^d * Ntrain * Nsamples ~ (15)^2 * (100)^(2) * (5 * 10^6) * 10000 ~ 1.3 * 10^17 FLOPs. 
 	* Time = FLOPs/(FLOPs/s) = FLOPs / (1-4 FLOPs/cycle * (clockfreq)) ~ (1.3E17 FLOPs) ( 1 cycle / 1 FLOPs) ( 1 s / 2E9 cycles) ( 1 Hr / 3.6E3 s) ~ (1.3/7.2)E4 ~ 1.8E4 computational hours 
 	* Parallelize the training/searching!
-	                      

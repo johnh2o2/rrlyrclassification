@@ -65,36 +65,36 @@ if not os.path.exists(gcvs_info_file):
 else:
 	gcvs_info = pickle.load(open(gcvs_info_file, 'rb'))
 
+def load_hatid_field_list(fields):
+	flist = {}
+	for field in fields:
+		if field == 'gcvs': 
+			for hatid in gcvs_info:
+				flist[hatid] = gcvs_info[hatid]
+		else: 
+			fname = os.path.join(hatids_in_fields_dir, "hatids_in_field_%s.list"%(field))
+			field_ids = pickle.load(open(fname, 'rb'))
+			if field_ids is None: 
+				continue
+			
+			for hatid in field_ids:
+				flist[hatid] = field
+
+	return flist
 
 # Load hatids for each field
-for field in fields_to_analyze:
-	if field == 'gcvs': 
-		for hatid in gcvs_info:
-			hatid_field_list[hatid] = gcvs_info[hatid]
-	else: 
-		
-		fname = os.path.join(hatids_in_fields_dir, "hatids_in_field_%s.list"%(field))
-		'''
-		if not os.path.exists(fname):
-			field_ids = []
-			if not os.path.exists(hatid_field_list_fname):
-				get_hatid_field_list(fields_to_analyze)
+def set_hatid_field_list(fields=fields_to_analyze):
+	global hatid_field_list
+	hatid_field_list = load_hatid_field_list(fields)
+	return hatid_field_list
 
-				print "miscutils: loading hatid_field_list.."
-				hatid_field_list = pickle.load(open(hatid_field_list_fname, 'rb'))
+def set_fields_to_analyze(fields):
+	global fields_to_analyze
+	fields_to_analyze = fields
 
-			for hatid in hatid_field_list:
-				if hatid_field_list[hatid] == field: field_ids.append(hatid)
+set_hatid_fields_list()
 
-			pickle.save(field_ids, open(fname, 'wb'))
-		'''
-		field_ids = pickle.load(open(fname, 'rb'))
-		if field_ids is None: 
-			hatid_field_list[hatid] = []
-			continue
-		
-		for hatid in field_ids:
-			hatid_field_list[hatid] = field
+
 
 def get_field_of(hatid):
 	if not hatid in hatid_field_list: return None
@@ -1015,7 +1015,8 @@ def save_and_return(lc, hatid, save_full_lc):
 		f.close()
 	return lc
 
-def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_dat=None, ssh=None, sftp=None, save_full_lc=True, min_observations=5, delete_raw_lc=True, force_redo = force_redo):
+def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_dat=None, ssh=None, sftp=None, 
+		save_full_lc=True, min_observations=5, delete_raw_lc=True, force_redo = force_redo, fields=fields_to_analyze):
 	logprint("  load_full_tfalc_from_scratch ** %s"%(hatid), all_nodes=True)
 
 	# Load full lightcurve if one is available
@@ -1048,7 +1049,7 @@ def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_da
 		if twomass_info_for_field is None: raise Exception("line 1033 in miscutils: tried to load twomass_info_for_field, but it's STILL None.")
 		if not field in twomass_info_for_field: add_twomass_info_field(field)
 		
-		if is_gcvs(hatid) and 'gcvs' in fields_to_analyze:
+		if is_gcvs(hatid) and 'gcvs' in fields:
 			if not hatid in twomass_info_for_field['gcvs']:
 				logprint("                    !             %s  !  No twomass information available for hatid in `gcvs` field."%(hatid), all_nodes=True)
 				return save_and_return(None, hatid, save_full_lc)
@@ -1425,10 +1426,10 @@ def get_hatid_field_list(fields):
 load_lightcurve = load_full_tfalc_from_scratch
 
 twomass_info_for_field = None
-def load_2mass_info_for_field():
+def load_2mass_info_for_field(fields = fields_to_analyze):
 	print "miscutils: loading twomass_info_for_fields.."
 	global twomass_info_for_field
-	twomass_info_for_field = { field : twomass_info_file(field) for field in fields_to_analyze }
+	twomass_info_for_field = { field : twomass_info_file(field) for field in fields }
 
 
 def add_twomass_info_field(field):
