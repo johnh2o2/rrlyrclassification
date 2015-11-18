@@ -165,7 +165,7 @@ def process_field_serial(field):
 
 	# Skip this field if there are no good hatids.
 	if len(hatids) == 0: 
-		logprint(" get_candidates: there are no more viable hatids in field %s"%(field))
+		logprint(" get_candidates: there are no more viable hatids in field %s"%(field), all_nodes=True)
 		return bad_ids_in_field, candidates_in_field
 
 	for hatid in hatids:
@@ -294,6 +294,7 @@ def process_field_parallel(field):
 # Choose the method of parallelization 
 CANDIDATES = []
 if parallelize_fields:
+	logprint(" get_candidates: parallelizing FIELDS (nfields ~ nhatids)")
 	if ROOT:
 		bad_ids, cands = msl.master(field_split.keys())
 		for bids, cs in zip(bad_ids, cands):
@@ -302,7 +303,7 @@ if parallelize_fields:
 	else:
 		msl.slave(process_field_serial)
 else:
-
+	logprint(" get_candidates: parallelizing HATIDS (nhatids >>> nfields)")
 	for field in field_split:
 		bad_ids, cands = process_field_parallel(field)
 		if ROOT:
