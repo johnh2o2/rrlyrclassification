@@ -1,4 +1,3 @@
-print "loading modules..."
 import os, sys, glob, argparse
 from settings import *
 if RUNNING_ON_DELLA:
@@ -13,7 +12,6 @@ from utils.miscutils import *
 from utils.featureutils import *
 import cPickle as pickle
 from mpi4py import MPI
-print "done."
 logprint(" get_candidates: loaded libraries", all_nodes=True)
 
 # Get rank and size of mpi process
@@ -128,6 +126,21 @@ if len(nofield_hatids) > 0:
 # PROCESS ============================================================
 # --------------------------------------------------------------------
 
+def process_field(field):
+	hatids = field_split[field]
+	bad_ids_in_field = []
+	candidates_in_field = []
+
+	logprint(" get_candidates: Handling the %d hatids in field %s"%(len(hatids), field), all_nodes=True)
+	
+	keylist = load_keylist(field)
+	if keylist is None:
+		logprint('               : keylist is None.', all_nodes=True)
+		return 
+		
+	twomass = twomass_info_file(field)
+
+
 CANDIDATES = []
 for field in field_split:
 	
@@ -136,7 +149,7 @@ for field in field_split:
 	logprint(" get_candidates: Handling the %d hatids in field %s"%(len(hatids), field))
 
 	# Load keylist and twomass information for this field
-	keylist, twomass = None
+	keylist, twomass = None, None
 	if ROOT:
 		logprint(" get_candidates: Loading keylist...")
 		keylist = load_keylist(field)
@@ -145,7 +158,7 @@ for field in field_split:
 
 	# Broadcast keylist + 2mass
 	logprint(" get_candidates: broadcasting keylist and twomass")
-	keylist = comm.bcast(keylists, root=0)
+	keylist = comm.bcast(keylist, root=0)
 	twomass = comm.bcast(twomass, root=0)
 
 	# Test twomass/keylist info
@@ -161,12 +174,12 @@ for field in field_split:
 	# Are any hatids missing from the 2mass information?
 	nno2mass = 0
 	for hatid in hatids:
-		if hatid not in BAD_IDS and (hatid not in twomass[field] or twomass[field][hatid] is None):
+		if hatid not in BAD_IDS and (hatid not in twomass or twomass[hatid] is None):
 			nno2mass += 1
 			BAD_IDS.append(hatid)
 
 	# Remove bad hatids
-	hatids = [ hatid in hatids if not hatid in BAD_IDS ]
+	hatids = [ hatid for hatid in hatids if not hatid in BAD_IDS ]
 
 	# Print the number of hatids discarded because of missing 2mass information
 	if nno2mass > 0: logprint(" get_candidates: 2mass info not available for %d hatids in field %s"%(nno2mass, field))
@@ -207,7 +220,7 @@ for field in field_split:
 		
 	else:
 		msl.slave(lambda hatid : (hatid, load_full_tfalc_from_scratch(hatid, field=None, 
-				keylist_dat=keylists[field], twomass_dat=twomass[field][hatid], save_full_lc=True, 
+				keylist_dat=keylist, twomass_dat=twomass[hatid], save_full_lc=True, 
 				min_observations=5, delete_raw_lc=args.rm_orig, force_redo = args.force_redo)))
 		msl.slave(lambda hatid : (hatid, generate_features(hatid)))
 		msl.slave(lambda hatid : (hatid, ) + test_hatid(hatid, model_prefix, min_score, min_frac_above_min_score, iteration, N=nmc))
