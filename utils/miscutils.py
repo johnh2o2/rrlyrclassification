@@ -29,7 +29,7 @@ def get_logfile(rank):
 save_log_of_each_node = True
 terminal_printing = True
 nodes_to_print = [ 0, 1 ]
-def logprint(m, all_nodes=False):
+def logprint(m, all_nodes=False, flush=True):
 	if VERBOSE and save_log_of_each_node:
 		msg = "node %d: %s"%(comm.rank, m)
 		f = open(get_logfile(rank), 'a')
@@ -38,7 +38,8 @@ def logprint(m, all_nodes=False):
 	if VERBOSE and all_nodes and terminal_printing and comm.rank in nodes_to_print: 
 		print "node %d: %s "%(comm.rank, m)
 	elif VERBOSE and ROOT and terminal_printing: print m
-
+	
+	if flush: sys.stdout.flush()
 
 field_info = pickle.load(open(field_info_fname, 'rb'))
 all_fields = [ F for F in field_info ]
@@ -92,7 +93,7 @@ def set_fields_to_analyze(fields):
 	global fields_to_analyze
 	fields_to_analyze = fields
 
-set_hatid_fields_list()
+set_hatid_field_list()
 
 
 

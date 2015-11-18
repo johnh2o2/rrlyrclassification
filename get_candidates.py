@@ -1,28 +1,20 @@
-print "Loading libraries..."
+print "loading modules..."
 import os, sys, glob, argparse
-print "   settings"
 from settings import *
 if RUNNING_ON_DELLA:
 	import matplotlib as mpl
 	mpl.use('Agg')
-print "   matplotlib"
 import matplotlib.pyplot as plt
-print "   numpy"
 import numpy as np
-print "   interp1s"
 from scipy.interpolate import interp1d
-print "   fs from utils.feature_selection"
 import utils.feature_selection as fs
-print "   rhlc from utils.readhatlc"
 import utils.readhatlc as rhlc
-print "   miscutils"
 from utils.miscutils import *
-print "   featureutils"
 from utils.featureutils import *
-print "   the rest!"
 import cPickle as pickle
 from mpi4py import MPI
-
+print "done."
+logprint(" get_candidates: loaded libraries", all_nodes=True)
 
 # Get rank and size of mpi process
 comm = MPI.COMM_WORLD
@@ -59,7 +51,7 @@ if not args.fields is None:
 	for f in args.fields:
 		fname = get_hatids_in_field_fname(f)
 		list_of_ids = pickle.load(open(fname, 'rb'))
-		logprint( " process: Found %d hatids in field %s"%(len(list_of_ids), f))
+		logprint( " get_candidates: Found %d hatids in field %s"%(len(list_of_ids), f))
 		hatids_to_process.extend(list_of_ids)
 
 # Add lists
@@ -73,10 +65,11 @@ if not args.list is None:
 		hatids_to_process.extend(list_of_ids)
 
 # Add specific hatids
-if not args.hatids is None:
-	logprint(" process: You gave %d hatids on the command line"%(len(args.hatids)))
+if not args.hatids is None and len(args.hatids) > 0:
+	logprint(" get_candidates: You gave %d hatids on the command line"%(len(args.hatids)))
 	for hatid in args.hatids:
 		hatids_to_process.append(hatid)
+
 
 # ====================================================================
 # ------------------------------------------------------------- /INPUT
@@ -86,6 +79,8 @@ if not args.hatids is None:
 
 # Set the global hatid_field_list variable
 hatid_field_list = set_hatid_field_list(all_fields)
+
+logprint(" get_candidates: loaded hatid_field_list", all_nodes = True)
 
 # Set the global `fields_to_analyze` list.
 set_fields_to_analyze(all_fields)
@@ -105,7 +100,7 @@ def split_hatids_into_fields(hatids):
 
 	fields = np.unique( [ hatid_field_list[hatid] for hatid in hatids if not hatid in nofield_hatids ] )
 
-	return { f : [ hatid for hatid in hatids if hatid_field_list[hatid] == f ] for f in fields if not f is None }, nofield_hatids
+	return { f : [ hatid for hatid in hatids if not hatid in nofield_hatids and hatid_field_list[hatid] == f ] for f in fields if not f is None }, nofield_hatids
 
 logprint(" get_candidates: sorting hatids by field")
 
