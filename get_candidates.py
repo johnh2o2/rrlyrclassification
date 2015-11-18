@@ -107,6 +107,10 @@ logprint(" get_candidates: sorting hatids by field")
 # Split the hatids into their respective fields to save time
 field_split, nofield_hatids = split_hatids_into_fields(hatids_to_process)
 
+# Start a list of 'bad' hatids
+BAD_IDS = []
+BAD_IDS.extend(nofield_hatids)
+
 # Save the hatids with no known field
 if len(nofield_hatids) > 0:
 	logprint(" get_candidates: %d / %d hatids have no field"%(len(nofield_hatids), len(hatids_to_process)))
@@ -117,47 +121,39 @@ if len(nofield_hatids) > 0:
 	logprint(" get_candidates: Saving list of hatids with no known field to %s"%(nofield_fname))
 	safe_save(nofield_hatids, nofield_fname)
 
-# Load keylist and twomass information for fields
-keylists, twomass = {}, {}
-if ROOT:
-	BAD_IDS = []
-	BAD_IDS.extend(nofield_hatids)
-
-	logprint(" get_candidates: Loading keylists.")
-	keylists_ = msl.master(field_split.keys())
-	logprint(" get_candidates: Loading 2mass information")
-	twomass_ = msl.master(field_split.keys())
-
-	# Merge the lists of dicts
-	for kl in keylists_:
-		field = kl.keys()[0]
-		keylists[field] = kl[field]
-	for tm in twomass_:
-		field = tm.keys()[0]
-		twomass[field] = tm[field]
-else:
-	msl.slave(lambda field : { field : load_keylist(field) })
-	msl.slave(lambda field : { field : twomass_info_file(field)} )
+# ====================================================================
+# ---------------------------------------------------------- /ORGANIZE
 
 
-# Broadcast keylist and twomass information
-keylists = comm.bcast(keylists, root=0)
-twomass = comm.bcast(twomass, root=0)
+# PROCESS ============================================================
+# --------------------------------------------------------------------
 
-# Prune out the hatids that don't have keylist or 2mass information.
-for field in field_split.keys():
-
-	# hatids in field.
+CANDIDATES = []
+for field in field_split:
+	
+	# Get a list of hatids in this field
 	hatids = field_split[field]
+	logprint(" get_candidates: Handling the %d hatids in field %s"%(len(hatids), field))
 
-	# Does the field have a keylist?
-	if field not in keylists or keylists[field] is None:
+	# Load keylist and twomass information for this field
+	keylist, twomass = None
+	if ROOT:
+		logprint(" get_candidates: Loading keylist...")
+		keylist = load_keylist(field)
+		logprint(" get_candidates: Loading twomass...")
+		twomass = twomass_info_file(field)
+
+	# Broadcast keylist + 2mass
+	logprint(" get_candidates: broadcasting keylist and twomass")
+	keylist = comm.bcast(keylists, root=0)
+	twomass = comm.bcast(twomass, root=0)
+
+	# Test twomass/keylist info
+	if keylist is None:
 		logprint(" get_candidates: keylist for field %s is None; %d hatids are going to be labeled BAD"%(field, len(hatids)))
 		BAD_IDS.extend(hatids)
 		continue
-
-	# Does the field have 2mass information available?
-	if not field in twomass or twomass[field] is None:
+	if twomass is None:
 		logprint(" get_candidates: 2mass info not available for field %s; %d hatids are going to be labeled BAD"%(field, len(hatids)))
 		BAD_IDS.extend(hatids)
 		continue
@@ -169,24 +165,20 @@ for field in field_split.keys():
 			nno2mass += 1
 			BAD_IDS.append(hatid)
 
+	# Remove bad hatids
+	hatids = [ hatid in hatids if not hatid in BAD_IDS ]
+
 	# Print the number of hatids discarded because of missing 2mass information
 	if nno2mass > 0: logprint(" get_candidates: 2mass info not available for %d hatids in field %s"%(nno2mass, field))
 
-# ====================================================================
-# ---------------------------------------------------------- /ORGANIZE
-
-
-# PROCESS ============================================================
-# --------------------------------------------------------------------
-
-CANDIDATES = []
-# Now process the hatids
-for field in field_split:
-	hatids = field_split[field]
-	logprint(" get_candidates: Handling the %d hatids in field %s"%(len(hatids), field))
+	# Skip this field if there are no good hatids.
+	if len(hatids) == 0: 
+		logprint(" get_candidates: there are no more viable hatids in field %s"%(field))
+		continue
 
 	# Master/slave workload distribution to make & test features
 	if ROOT:
+		logprint(" get_candidates: Handling the %d hatids in field %s"%(len(hatids), field))
 
 		# Generate lightcurves
 		logprint("               :  processing lightcurve!")
@@ -226,8 +218,9 @@ for field in field_split:
 # ----------------------------------------------------------- /PROCESS
 
 # Save results.
-safe_save(BAD_IDS, get_bad_ids_fname(iteration))
-safe_save(CANDIDATES, get_candidate_fname(iteration))
+if ROOT:
+	safe_save(BAD_IDS, get_bad_ids_fname(iteration))
+	safe_save(CANDIDATES, get_candidate_fname(iteration))
 
-logprint("               : %d / %d ids were 'bad'"%(len(BAD_IDS), len(hatids_to_process)))
-logprint("               : %d / %d ids were 'candidates'"%(len(CANDIDATES), len(hatids_to_process)))
+	logprint("               : %d / %d ids were 'bad'"%(len(BAD_IDS), len(hatids_to_process)))
+	logprint("               : %d / %d ids were 'candidates'"%(len(CANDIDATES), len(hatids_to_process)))
