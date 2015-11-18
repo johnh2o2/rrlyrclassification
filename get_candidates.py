@@ -296,9 +296,10 @@ CANDIDATES = []
 if parallelize_fields:
 	logprint(" get_candidates: parallelizing FIELDS (nfields ~ nhatids)")
 	if ROOT:
-		bad_ids, cands = msl.master(field_split.keys())
-		for bids, cs in zip(bad_ids, cands):
-			BAD_IDS.extend(bids)
+		
+		results = msl.master(field_split.keys())
+		for bad_ids, cands in results:
+			BAD_IDS.extend(bad_ids)
 			CANDIDATES.extend(cands)
 	else:
 		msl.slave(process_field_serial)

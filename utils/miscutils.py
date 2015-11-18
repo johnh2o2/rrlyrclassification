@@ -28,7 +28,7 @@ def get_logfile(rank):
 	return "%s/logfile.%04d"%(SCRATCH, rank)
 save_log_of_each_node = True
 terminal_printing = True
-nodes_to_print = [ 0, 1 ]
+nodes_to_print = np.arange(size)
 def logprint(m, all_nodes=False, flush=True):
 	if VERBOSE and save_log_of_each_node:
 		msg = "node %d: %s"%(comm.rank, m)
