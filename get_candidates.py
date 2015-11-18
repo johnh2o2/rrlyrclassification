@@ -19,7 +19,7 @@ comm = MPI.COMM_WORLD
 size = comm.Get_size()
 rank = comm.Get_rank()
 ROOT = (rank == 0)
-logprint(" get_candidates: MPI: rank = %d size = %d"%(rank, size))
+logprint(" get_candidates: MPI: rank = %d size = %d"%(rank, size), all_nodes=True)
 
 # INPUT ==============================================================
 # --------------------------------------------------------------------
