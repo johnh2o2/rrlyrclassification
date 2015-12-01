@@ -433,22 +433,178 @@ real    215m27.890s
 # Nov 18
 * Della run completed: 29 candidates
 * Pulled on della. Let's see if we can't get the new get_candidates to work!
+* get_candidates now works!!
+* Edited send_files to work with arbitrary lists of hatids
+* 
+
+# Nov 19
+* Submitting small run to della first to test get_candidates
+* Output from matching 'non-rrlyr' (score=0):
+Weeding out the lightcurves and features that are 'None'-valued
+642/10570 hatids have no lightcurve file
+905/10570 hatids have no feature file
+4169/10570 hatids are already labeled
+2138/10570 hatids have features that are 'None'
+2401/10570 hatids have lightcurves that are 'None'
+7212/10570 hat ids are not OK. We are ignoring them.
+* Output from matching rrlyr (score=3):
+179/1040 hatids have no lightcurve file
+203/1040 hatids have no feature file
+290/1040 hatids are already labeled
+221/1040 hatids have features that are 'None'
+245/1040 hatids have lightcurves that are 'None'
+714/1040 hat ids are not OK. We are ignoring them.
+Copying lightcurves.
+Copying features.
+Copying scores.
+* output from matching conflicting label sources:
+* TODO: label the RR lyrae cross matches + multiply-labeled cross-matches
+
+# Nov 20
+* Labeling RR lyr candidates
+* I think the labeling scheme is insufficient -- added RRc category and an RRab/RRc blend category.
+* Think about making things faster by showing images and adding a --fast argument to the visualizer.
+* Used a 20" search radius now. 
+
+15930    TOTAL unique matches               RR: 1171     possible-RR: 76       unsure: 3398     non-RR: 11285
+
+* Added an --include-labeled to the send_files.py script.
+* OK new goal: reclassify ALL positively labeled RR lyrae and ALL positively labeled NON-rrlyrae.
+	* Write a javascript/simple web form with LSP, phase-folded diagram + fit, maaaaybe color info + radio menu
+		* muuuch faster.
+
+## Meeting with Joel and Gaspar
+* Keylist files 
+	* query MySQL database -- Joel is sending you the script to generate the keylist files.
+* Does phn1 have all of the lightcurves?
+	* They're distributed across all of the servers, but mounts + symlinks should (in *principle*) allow you access to everything
+	* sometimes there are mounting problems or no symlink: CHECK THIS
+* Need to get a better handle on why lightcurves are being rejected
+* MAX_RADIUS -- check catalogs
+	* Pixels are kind of big
+	* out to arcminute for much older catalogs
+* CHECK FOR BLENDED RRLYRAE after you're done -- cross-match with itself!! (period, space) matching
+
+### Thesis ideas
+* **exploring the variability of the bright sky**
+	* what kind of science do you do with all of this
+	* some statistics?
+	* interesting individual ones?
+	* rare objects?
+* machine learning algorithm that can reproduce by0eye selection of transient planet candidates
+	* BLS + lightcurves
+	* apply to simulated planet injection
+	* very specific science goal
+transiting planets are just one type of
+statistcs for hot jupiters -- interesting (20)
+	* we'll have about 100 hot jupiters
+	* generate completeness in order to understand the underlying statistics
+	* 100+ planet statistics -- where is pileup of hot jupters in period space -- dep. on mass radius
+WASP, TESS, GAIA <-- know that
+
+
+# Nov 25
+* Wrote `fast_labeler.py` -- a generic labeler that uses image files to allow for quicker labeling (but without interactivity with the underlying data)
+* Goals for today
+	* Write script to collate images into "reports" that show phase-folded lightcurves for each member of a given class.
+		* This way I can take this to Gaspar/Waqas/Joel and ask them to confirm classification results
+	* Write script to collate all available feature files into gzipped csv file and transfer this to my home machine.
+	* Write script that takes all "rejected" hatids and diagnoses why they were rejected
+		* Add info like field, lightcurve location, keylist location, number of good exposures / total exposures, avg magnitude, rms, 
+	* Incorporate Joel's keylist generating script and 2mass information for each hatid
+	* Try to update list of LC folder locations on phn1
+		* Are the correct drives mounted?
+		* Are the locations given by Waqas all correct? Are there additional locations that we're missing?
+		* 
+
+# Nov 29
+* Figure out new computer; anything I can take advantage of?
+* Finish classifying all of the crossmatches by hand
+* Write summary script
+* Write "--all" argument to get_candidates
+* Finish runs on della!!!
+
+# Nov 30
+* Della runs STILL need more time 
+	* trying to figure out why the runs need so long 
+	* I/O seems to be the limiting factor;
+	* will make better use of scratch space
+		* Current size of features directory: ___ (du takes a LONG time)
+		* Tigress is 13 GB/s > 10GB/s for /scratch but "advantage is lost because /tigress is not directly connected to the nodes" -- CSES.
+		* "if you don't need parallel storage [we do], /scratch is faster"
+		* **stick with tigress**
+		* I'd like to find a way to hopefully speed up the process...
+* Computer -- buying GPU; should I keep anything in mind?
+* Manual classification; some sources are blends of RRab-RRc (at least to me)
+* Retraining results:
+	* 290 rrlyrae (less than total; we're doing cross-validation here)
+	* WOOPS -- used old label_candidates script that didn't ignore RRab-RRc blends + RRc's
+		* Redoing.
+		* Still using 290 RRlyrae...are we sure this is right?
+		* Bug found -- split on ' '; should just do split(); fixed this and we're golden.
+			* 396 training rrlyrae; NOWWW we're talking
+			* Performance of classifier seems to be about the same.
+	* **relabeling issue**
+		* Sources that were previously labeled and are now "ignored" for whatever reason are intentionally not overwritten in the labeled_hatids.dat file
+			* This needs to change! (well, we need to restart from scratch with rrab_v5)
+* Will do an "assessment" of all hatids to get handle on what is missing where
+* THESIS: plan is to have a rough draft of proposal by Friday/Monday
+	* Unsupervised clustering
+	* Estimating yield from hatpi
+	* Preliminary results from this project
+* **RESULTS OF RRLYR SEARCH SO FAR**
+	* Looked in 55 / 137 fields so far. (!!!!) I thought it was MUCH higher...
+		* This will take (18 seconds) * (6 * 10^6) * (1 - 55/137) * (1 / (60 * 60 hours)) / 128 nodes = **18,000 CPU HOURS = 140 WALLTIME hours!!!!**
+	* Looks like we have about **35 newly discovered RR-lyrae** (that are not found in the crossmatches)
+
+
+# Dec 31
+* Computer -- you have no help from university (no Gaspar, no travel fund, no discounts), so go ahead!
+* Met with Joel today
+	* For all classifications:
+		* Use 0.2 - 0.5d = RRc; 0.4 - 1.0d = RRab (0.4 - 0.5 is by eye); 
+		* period ranges are from "Lightcurves of Variable Stars: a pictorial atlas" C Sterken + C Jaschek
+	* **USE ONE APERATURE**
+	* There is an
+		* lc-stat file (!) -- mag, rms, *optimal aperature*
+		* 2mass file
+		* keylist.txt
+	  available in each directory. USE THEM. There should be *NO* missing data
+	  as long as you are using the `.tfalc` lightcurves
+	* I/O should be 10,000 LC's/second (if you were loading them on the phn servers)
+	* Test each aspect of your processing pipeline to find the bottleneck.
+		* Open interactive session and walk through the process.
+	* 
+* Contamination of RR signal from delta scuti stars should be considered. Pg 81 of SJ1996 point out that p_ds < 0.3d with amplitudes ~0.2mag with ranges few thousands of mag to 0.8 mag.
+	* So, we need to be very careful about RRc signals.
 
 # TODO:
-* Look at: http://arxiv.org/pdf/1306.6664v2.pdf <-- conditional entropy; 1.5 orders of magnitude faster than LS and about 1 order of mag more effective.
+* Assess all lightcurves and fields; this way you can figure out what's missing and what isn't and get a better handle on where the bottleneck is coming from.
+* Is there a way to speed up the processing part???
+	* Walk through process
+	* Rewrite inefficient parts of the code
+	* Consider writing some parts in C
+	* 
+* RUN ON THE REST OF THE FIELDS (you'll need like 2 or more runs)
+* Confirm your labelings of RR lyrae with Joel
+* Write script to simulate RR-lyrae lightcurves
+	* Pull a few random hatids (in each magnitude bin)
+
+* Implement [conditional entropy](http://arxiv.org/pdf/1306.6664v2.pdf)
+	* 1.5 orders of magnitude faster than LS and about 1 order of mag more effective.
 * Do better cross-validation.
 	* You should be using the 2d selection function: FPR(pmin, P(p>pmin)), TPR(pmin, P(p>pmin)); pick a minimum threshold, then choose an optimal selection criteria
 * **[DONE]** Run current implementation on 145 + 219 ON DELLA.
 * **[DONE]** (~17-18 seconds) Generate timing information. How long / lightcurve?
 * **[DONE]** Implement SSRFC method (in its own module). Test on some example datasets.
 	* Doesn't work.
-* Write a general set of convergence functions (or use anything given by sklearn)
+* **[DONE]** Write a general set of convergence functions (or use anything given by sklearn)
 	* Want to know:
 		1. How does the error rate depend on number of samples?
 		2. How does the ROC curve look as a function of iteration?
-* Implement a better candidate selection mechanism: You're not taking advantage of the state of the art.
+* **[optional]** Implement a better candidate selection mechanism: You're not taking advantage of the state of the art.
 	* Don't want RRLyr-like objects. You want to choose "candidates" in the most efficient way possible to improve the model!
-* Attempt to make Kohonen maps of LC shapes faster.
+* **[optional]** Attempt to make Kohonen maps of LC shapes faster.
 	* The "naive" way (maybe the only way) to train is len(xi) * len(xi) * N^d * Ntrain * Nsamples ~ (15)^2 * (100)^(2) * (5 * 10^6) * 10000 ~ 1.3E17 FLOPs. 
 	* Time = FLOPs/(FLOPs/s) = FLOPs / (1-4 FLOPs/cycle * (clockfreq)) ~ (1.3E17 FLOPs) ( 1 cycle / 1 FLOPs) ( 1 s / 2E9 cycles) ( 1 Hr / 3.6E3 s) ~ (1.3/7.2)E4 ~ 1.8E4 computational hours 
 	* Parallelize the training/searching!

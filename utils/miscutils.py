@@ -200,6 +200,7 @@ def get_t_x(lc, coltype='TF',selection='locally-brightest', ttype='BJD'):
 		return None, None
 	else:
 		return np.array(t), np.array(x)
+		
 def is_peak(powers, i, imin, imax, per, peak_pers):
     p = powers[i]
     for I in range(imin,imax+1):
@@ -1044,10 +1045,10 @@ def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_da
 	
 	# Obtain twomass/color data for hatid
 	if twomass_dat is None:
-
+		logprint("                                  %s  > Loading 2mass info."%(hatid), all_nodes=True)
 		# Try loading twomass_info_for_field if it isn't loaded already...
 		if twomass_info_for_field is None: add_twomass_info_field(field)
-		if twomass_info_for_field is None: raise Exception("line 1033 in miscutils: tried to load twomass_info_for_field, but it's STILL None.")
+		if twomass_info_for_field is None: raise Exception(" in load_full_tfalc_from_scratch (miscutils): tried to load twomass_info_for_field, but it's STILL None.")
 		if not field in twomass_info_for_field: add_twomass_info_field(field)
 		
 		if is_gcvs(hatid) and 'gcvs' in fields:
@@ -1069,6 +1070,7 @@ def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_da
 			return save_and_return(None, hatid,  save_full_lc)
 		else:
 			twomass_dat = twomass_info_for_field[field][hatid]
+
 	# Load keylist for field
 	if keylist_dat is None:
 		logprint("                                  %s  >  getting keylist data..."%(hatid), all_nodes=True)
@@ -1080,8 +1082,6 @@ def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_da
 
 	logprint("                                  %s  >  getting twomass data..."%(hatid), all_nodes=True)
 
-	
-
 	# Load tfalc lightcurve; add twomass/keylist data to it.
 	logprint("                                  %s  >  loading lc..."%(hatid), all_nodes=True)
 	lc = load_full_tfalc(get_raw_lc_fname(hatid), keylist_dat, twomass_dat)
@@ -1091,6 +1091,7 @@ def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_da
 
 	logprint("                                  %s  >  pruning out bad inds..."%(hatid), all_nodes=True)
 	lc['hatid'] = hatid
+
 	# Prune out missing keylist datapoints:
 	lc = prune_out_bad_inds(lc)
 
@@ -1098,8 +1099,8 @@ def load_full_tfalc_from_scratch(hatid, field=None, keylist_dat=None, twomass_da
 	if len(lc['BJD']) < min_observations: 
 		logprint("                    !             %s  !  too few observations!!"%(hatid), all_nodes=True)
 		return save_and_return(None, hatid, save_full_lc)
-	
 	logprint(logprint("                                  %s  >  %d observations are OK!"%(hatid, len(lc['BJD'])), all_nodes=True))
+
 	# To save space, once the pickled lightcurve is generated, the original tfalc is discarded.
 	if delete_raw_lc and RUNNING_ON_DELLA:
 		logprint("                                  %s  >  DELETING tfalc LC."%(hatid), all_nodes=True)
@@ -1469,128 +1470,3 @@ def get_bagged_samples(Categories, size, ftest=0.):
 			test_bag.extend(Samples[cat][-num_test[cat]:])
 		np.random.shuffle(test_bag)
 	return bags, test_bag
-
-def composite_prediction(ModelPreds, Class, clfrs=None):
-	if clfrs is None: 
-		#return np.mean([ M[Class] for M in ModelPreds ])
-		return max(M[Class] for M in ModelPreds)
-	return clfrs[Class].predict_proba(np.ravel(ModelPreds))[0][1] / sum( [ clfr.predict_proba(np.ravel(ModelPreds))[0][1] for clfr in clfrs ] )
-
-class BaggedModel:
-	def __init__(self, scalers=None, models=None, w=None):
-
-		# Assumes that either scalers is either None or a list with the same length as models
-		self.models = models
-		self.scalers = scalers
-		self.nclasses_ = None
-		self.clfrs_ = None
-
-		# weight the models equally by default
-		#self.composite_prediction_ = lambda ModelPreds, Class : np.mean(ModelPreds)
-
-	def get_model_preds_(self, X):
-			
-		Ys = []
-		for s, m in zip(self.scalers, self.models):
-			if not s is None: Ys.append(m.predict_proba(s.transform(X)))
-			else: Ys.append(m.predict_proba(X))
-
-		Yp = []
-
-		nclasses = len(Ys[0][0])
-		if not self.nclasses_ is None: assert(nclasses==self.nclasses_)
-		else: self.nclasses_ = nclasses
-
-		for i in range(len(X)):
-			Yp.append([ [ Ys[j][i][k] for k in range(nclasses) ] for j in range(len(self.models)) ])
-
-		return Yp
-
-	def predict_proba(self, X):
-		
-		Ys = self.get_model_preds_(X)
-
-		Y = [ ]
-		for i in range(len(X)):
-			Y.append([ composite_prediction(Ys[i], k) for k in range(self.nclasses_) ])
-		return Y
-
-	def fit(self, X, Y):
-		
-		ModelPredictions = self.get_model_preds_(X)
-
-		mpreds = []
-		for i in range(len(X)):
-			mpreds.append( np.ravel(ModelPredictions[i]) )
-			
-		self.clfrs_ = [ SVC(**svm_params) for i in range(self.nclasses_) ]
-		for Label in range(self.nclasses_):
-			y = [ 1 if yval == Label else 0 for i,yval in enumerate(Y) ]
-			self.clfrs_[Label].fit(mpreds, y)
-
-		#print self.clfrs_[0].predict_proba(mpreds[0])
-		self.composite_prediction_ = lambda ModelPreds, Class : \
-			self.clfrs_[Class].predict_proba(ModelPreds)[0][1] \
-					/ sum( [ clfr.predict_proba(ModelPreds)[0][1] for clfr in self.clfrs_ ] )
-
-	def save(self, root_name):
-		filenames = []
-		if not self.models is None:
-			# Save scalers and models
-			for i, m in enumerate(self.models):
-				if not self.scalers is None: s = self.scalers[i]
-				else: s = None
-
-				fname_s = "%s_s%d.pkl"%(root_name,i)
-				fname_m = "%s_m%d.pkl"%(root_name,i)
-				fname_sm = "%s_sm%d.pkl"%(root_name,i)
-				pickle.dump(s, open(fname_s, 'wb'), HP )
-				pickle.dump(m, open(fname_m, 'wb'), HP )
-				pickle.dump((fname_s, fname_m), open(fname_sm, 'wb'), HP)
-
-				filenames.append(fname_sm)
-			bagged_model_fname = "%s.pkl"%(root_name)
-			
-			# Save additional classifiers if there are any
-			if not self.clfrs_ is None:
-				bagged_model_clfrs_fname = "%s_clfrs.pkl"%(root_name)
-				clfr_fnames = []
-				for clfr in self.clfrs_:
-					fname = "%s_clfr%d.pkl"%(root_name,i)
-					pickle.dump(clfr, open(fname, 'wb'), HP)
-					clfr_fnames.append(fname)
-				pickle.dump(clfr_fnames, open(bagged_model_clfrs_fname, 'wb'), HP)
-
-			pickle.dump(filenames, open(bagged_model_fname, 'wb'), HP)
-
-		else:
-			raise Exception("Can't save an empty BaggedModel (models == None)")
-		return True
-
-	def load(self, root_name):
-		bagged_model_fname = "%s.pkl"%(root_name)
-		bagged_model_clfrs_fname = "%s_clfrs.pkl"%(root_name)
-
-		filenames = pickle.load(open(bagged_model_fname, 'rb'))
-		self.scalers = []
-		self.models = []
-		
-		# Load scalers and models
-		for f in filenames:
-			fname_s, fname_m = pickle.load(open(f, 'rb'))
-
-			s = pickle.load(open(fname_s,'rb'))
-			m = pickle.load(open(fname_m,'rb'))
-
-			self.scalers.append(s)
-			self.models.append(m)
-
-		# if there are also additional classifiers, load them too!
-		if os.path.exists(bagged_model_clfrs_fname):
-			clfr_fnames = pickle.load(open(bagged_model_clfrs_fname, 'rb'))
-			self.clfrs_ = [ pickle.load(open(fname, 'rb')) for fname in clfr_fnames ]
-			self.nclasses_ = len(self.clfrs_)
-			#self.composite_prediction_ = self.composite_prediction
-
-		return True
-
