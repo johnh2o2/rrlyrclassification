@@ -558,12 +558,13 @@ WASP, TESS, GAIA <-- know that
 	* Looks like we have about **35 newly discovered RR-lyrae** (that are not found in the crossmatches)
 
 
-# Dec 31
+# Dec 1
 * Computer -- you have no help from university (no Gaspar, no travel fund, no discounts), so go ahead!
 * Met with Joel today
 	* For all classifications:
 		* Use 0.2 - 0.5d = RRc; 0.4 - 1.0d = RRab (0.4 - 0.5 is by eye); 
 		* period ranges are from "Lightcurves of Variable Stars: a pictorial atlas" C Sterken + C Jaschek
+		* **problem** this seems to not be exact. RRab-like lightcurves extend down to like 0.32 days in our sample...
 	* **USE ONE APERATURE**
 	* There is an
 		* lc-stat file (!) -- mag, rms, *optimal aperature*
@@ -577,6 +578,103 @@ WASP, TESS, GAIA <-- know that
 	* 
 * Contamination of RR signal from delta scuti stars should be considered. Pg 81 of SJ1996 point out that p_ds < 0.3d with amplitudes ~0.2mag with ranges few thousands of mag to 0.8 mag.
 	* So, we need to be very careful about RRc signals.
+
+# Dec 3
+* In process of completely revamping the pipeline and making sure everything we're doing makes sense
+	* Waqas has collected a bunch of new fields
+	* How many new fields?
+	* Count of hatids in each field
+	* Count of repeat hatids in each field; is it possible to compare hashes to know if lightcurves are repeats of each other?
+* Waqas mentioned that the optimal aperture should be the one with the smallest median absolute deviation.
+	* This is a problem for variable stars (obviously) because we're *looking* for sources with abnormally high median absolute deviations
+	* I think the best thing to do is to pick an arbitrary aperture and stick with it. Then we can go back later and analyze other aperatures if we want to.
+* TOTAL UNIQUE HATIDS IN ALL AVAILABLE (192) FIELDS: 5,655,277
+	* Using np.unique and checking that the ID has the right length of 15 characters
+* Multiple lightcurves
+	* 3849797    hatids have lightcurves in 1   directories
+	* 1426412    hatids have lightcurves in 2   directories
+	* 264386     hatids have lightcurves in 3   directories
+	* 78549      hatids have lightcurves in 4   directories
+	* 15550      hatids have lightcurves in 5   directories
+	* 17191      hatids have lightcurves in 6   directories
+	* 2043       hatids have lightcurves in 7   directories
+	* 59         hatids have lightcurves in 8   directories
+	* 1290       hatids have lightcurves in 9   directories
+* 32.9% of all hatids have more than one lightcurve!!!
+* Checking (using first 4096 bytes of the file -> md5) if some of these multiples are duplicates
+	* Maybe the best way to go is to choose the file with the largest size?
+	* Do we want to transfer ALL hatids?
+	* Maybe we organize things into folders corresponding to the HAT-(*)-XXXXXXXX number? 
+		* Proposal: Copy all lightcurves, denote duplicates from other fields as "HAT-FFF-NNNNNNN.tfalc.gz.EEE" where EEE is the field that the hatid was found in; then we can have a .tfalc.gz file that is either 
+			(1) collected from all of the different lightcurves (takes a long time but obviously maximizes the signal) or, 
+			(2) just a soft-link to one of them (e.g. the one with the largest filesize)
+		* md5 hashing takes 3.5 * 10-4 seconds per hatid (roughly, reading in only 4096 bytes; some take longer...is this because open() takes longer with larger filesizes?)
+			* shuffled the hatids to make this problem go away: each hash takes about 7.22450e-02 seconds
+		* Looking at the first 23,000 hatids with more than one location, there do not seem to be any duplicates, which is reassuring.
+			* 6000 RANDOM lightcurves, none of them duplicates.
+* What are the filesizes for each of the gz'ed lightcurves?
+
+# Dec 8
+* System crash; wiped HD+reinstalled OS; transferred contents
+* OK, lets test lcprocess.py on our local system first
+	* Use external drive for storage ()
+* System:
+	* Folders hold the lightcurves in each **field** (three numbers in the hatid)
+	* Lightcurve filenames are of the form <HATID>-<ERA>.tfalc.gz
+	* Each HATID has a soft-link to the file with the largest size. This filename is of the form <HATID>.tfalc.gz.
+	* CON of this is that we can't use rsync. Maybe we use rsync first and then "reorganize"
+
+# Dec 9
+* Did a lot for Bruce today -- about to submit though so that's done.
+* OK, I think lcprocess.py is ready to go for testing.
+* CURRENT SYSTEM
+	* in LCCACHE there are two directories (**FIELDS**, **ERAS**).
+		* **LCCACHE/ERAS** contains all of the raw data.
+		* **LCCACHE/FIELDS** contains *symlinks* to the raw data, organized into fields.
+			* Now that I think about it, we could have just organized things into a dictionary, but whatever.
+	* The lcprocess (and lcanalyze) will work from the **FIELDS*** directories; the **ERAS** directory is mainly just so we can rsync more easily.
+* On phn5:
+	* It appears that there are 149 folders (148 unique eras) that contain valid `.tfalc.gz` lightcurves.
+		* Era with two locations: 154 ['/nfs/phn5/ar2/hnlcs/phn15/154', '/nfs/phn5/ar2/hnlcs/phn1/154']
+		* There seems to be substantial overlap between the two directories...
+			* Either treat this as a special case, or add a new directory for each instance and rename the field (e.g. 154.0, 154.1)
+	* The complete list of folders in `all_new_field_dirs.txt` contains 192 folders
+		* Get list of all folders that we found hatids in: 
+			* `[ location for locations in hatid_locations.values() for location in locations ]`
+		* Now get the list of missing folders: 
+			* `missing_folders = [ directory for directory in field_list['directory'] if not directory in unique_directories ]`
+			* `len(missing_folders)` is 43.
+				* All of them are empty except for:
+					* `/nfs/phn5/ar2/hnlcs/edrive1/088.2` 
+						* 133064 files
+						* all are `.rlc.gz` files. (checked via `cat 210contents.txt | grep rlc | wc -l`)
+					* `/nfs/phn5/ar2/hnlcs/phn15/210`
+						* 55731 files
+						* all are `.rlc.gz` files. (checked same way as for 088.2)
+	* There are 133 eras that are 3 characters long (contain 95.9% of the data by size)
+		* 9.21 TB of data in "regular" eras (3-character era names)
+	* 1000 random hatids
+		* zip(hatids, filenames) is saved in `random_hatids.list`
+		* STATS:
+			min        : 2.410e-04 MB
+			max        : 3.503e+00 MB
+			mean       : 3.746e-01 MB
+			median     : 2.843e-01 MB
+			std        : 3.400e-01 MB
+* Della
+	* **YOU NEED TO FIGURE OUT HOW TO LOGIN NOW**
+
+# Dec 10
+* Where the lc transfer python script go that I was working on????
+	* In Gaspar/work directory. Recovering from heart attack right now.
+* Transferred the two smallest fields by size (190, 191). Transfer script appears to be working.
+* Problem:
+	* Need the feature extraction + processing to be 24 * 3600 * Ncores / Nlc = 1.94 seconds in order to do everything in one day on 128 cores.
+	* TEST SPEED of various LSP algorithms (vartools? fasper? Waqas' cpython code?)
+	* COMPARE with CE code (you found that python library)
+	* [code library](http://arxiv.org/abs/1512.01611) and [SOM classification in K2](http://arxiv.org/abs/1512.01246):
+		* **EXISTENTIAL CRISIS** what the hell do I do now?
+		
 
 # TODO:
 * Assess all lightcurves and fields; this way you can figure out what's missing and what isn't and get a better handle on where the bottleneck is coming from.
@@ -592,6 +690,7 @@ WASP, TESS, GAIA <-- know that
 
 * Implement [conditional entropy](http://arxiv.org/pdf/1306.6664v2.pdf)
 	* 1.5 orders of magnitude faster than LS and about 1 order of mag more effective.
+	* Also see [comparison of period finding algorithms](http://arxiv.org/abs/1307.2209)
 * Do better cross-validation.
 	* You should be using the 2d selection function: FPR(pmin, P(p>pmin)), TPR(pmin, P(p>pmin)); pick a minimum threshold, then choose an optimal selection criteria
 * **[DONE]** Run current implementation on 145 + 219 ON DELLA.

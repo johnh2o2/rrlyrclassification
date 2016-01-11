@@ -5,8 +5,10 @@ from settings import *
 
 nthreads = 4
 RSYNC_RSH="ssh -c arcfour -o Compression=no"
+file_grep = "*tfalc.gz"
 #remote_server="jah5@phn1.astro.princeton.edu"
-remote_server="phn1"
+remote_server="phn5"
+
 
 def new_proc(rdir, ldir):
 	print "Starting process to move %s to %s"%(rdir, ldir)
@@ -15,7 +17,7 @@ def new_proc(rdir, ldir):
 	else:
 		name = ldir.split('/')[-1]
 	
-	full_ex = "rsync -aurvhW  --include='./' --include='*.tfalc' --exclude='*' --stats -e '%s' %s:%s %s"%(RSYNC_RSH, remote_server, rdir, ldir)
+	full_ex = "rsync -aurvhW  --include='./' --include='%s' --exclude='*' --stats -e '%s' %s:%s %s"%(file_grep, RSYNC_RSH, remote_server, rdir, ldir)
 	logfile = open('rsync-%s.log'%(name), 'w')
 	
 	

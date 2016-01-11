@@ -258,7 +258,11 @@ def detrend(lc, detrend_vars=[ 'FLT', 'FLD', 'STF', 'NET', 'CAM', 'TEL' ], magty
 					lc[magcol][np.where(lc[v] == cat)] -= mus[cat] - mean_mu
 					if rmses[cat] > 0:
 						lc[magcol][np.where(lc[v] == cat)] = (lc[magcol][np.where(lc[v] == cat)] - mean_mu)*(mean_rms/rmses[cat]) + mean_mu
+def false_alarm_prob_to_sig(fap):
+	MAX_SIG = 1E15
 
+	if fap < pow(MAX_SIG + 1,-1): return MAX_SIG
+	else: return 1./fap - 1.
 def string_length(t, x , gamma=2.):
 	dxdt = 0.
 	N = 0
@@ -275,10 +279,60 @@ def string_length(t, x , gamma=2.):
 				1./gamma) for i in range(1,len(t)) ]) #+ pow( 
 					#pow(abs(t[0] - t[-1] + 1),gamma) + pow(A*abs(x[0] - x[-1]),gamma), 
 				#1./gamma) ]) 
+def bootstrap(x, nboots, bootsize, independent_trials=True):
+	if independent_trials and nboots*bootsize > len(x): 
+		if nboots == 1: 
+			return x
+		else:
+			raise Exception("bootstrap: independent_trials is true, but nboots*bootsize > len(x)")
+	inds = np.arange(len(x))
+	np.random.shuffle(inds)
+	bx = []
+	if independent_trials:
+		for i in range(nboots):
+			bx.append([ x[j] for j in inds[i*bootsize: (i+1)*bootsize] ])
+	else:
+		for i in range(nboots):
+			bx.append([ x[j] for j in inds[:bootsize] ])
+			np.random.shuffle(inds)
+	return bx
+def bootstrapped_lc(t, x, nboots=n_boots, bootsize=boot_size, independent_trials = True):
 
+	bslc = bootstrap([ [ T, X ] for T, X in zip(t, x) ] , nboots, bootsize, independent_trials=independent_trials )
+
+	#print bslc
+	bst = [ [ data[0] for data in sample ] for sample in bslc ]
+	bsx = [ [ data[1] for data in sample ] for sample in bslc ]
+	
+	return bst, bsx
 def get_dt(t):
 	return np.mean([ t[i] - t[i-1] for i in range(1, len(t)) ])
+def bootstrap_lsp(t, x, nboots, bootsize, independent_trials = True, data_range = None):
+	if data_range is None:
+		bst, bsx = bootstrapped_lc(t, x, nboots, bootsize)
+		
+	else:
+		assert( data_range >= boot_size and data_range <= len(t) )
 
+		start_inds = np.arange(len(t) - data_range)
+		np.random.shuffle(start_inds)
+		start_inds = start_inds[:n_boots]
+		
+		data_inds = np.arange(len(t))
+
+		bst = [ ]
+		bsx = [ ]
+		for i,si in enumerate(start_inds):
+			inds = data_inds[si:(si + data_range)]
+			np.random.shuffle(inds)
+			dinds = inds[:n_boots]
+
+			print max(t[dinds]) - min(t[dinds]), data_range*get_dt(t)
+			bst.append(t[dinds])
+			bsx.append(x[dinds])
+	
+
+	return [ lsp.fasper(np.array(T), np.array(X), ofac, hifac, MACC) for T, X in zip(bst, bsx) ]
 def get_errs(x, DI=DELTA_I):
 	# Assign error values to magnitude measurements by 
 	# calculating the standard deviation of 10 nearby measurements
